@@ -1,8 +1,9 @@
-﻿import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { CatalogoLaboratorios } from './pages/CatalogoLaboratorios'
 import { DetalhesLaboratorio } from './pages/DetalhesLaboratorio'
 import { DetalhesSolicitacao } from './pages/DetalhesSolicitacao'
 import { SolicitacaoAgendamento } from './pages/SolicitacaoAgendamento'
+import { Login } from './pages/Login'
 
 function RotaDetalhesLaboratorio() {
   const { id } = useParams()
@@ -23,6 +24,7 @@ function RotaSolicitacaoAgendamento({ detalhes = false }: { detalhes?: boolean }
 function App() {
   return (
     <Routes>
+      <Route path="/login" element={<Login />} />
       <Route path="/" element={<CatalogoLaboratorios />} />
       <Route path="/laboratorios/:id" element={<RotaDetalhesLaboratorio />} />
       <Route path="/laboratorios/:id/agendamento" element={<RotaSolicitacaoAgendamento />} />
