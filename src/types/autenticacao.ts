@@ -15,3 +15,12 @@ export interface RespostaLogin {
   token_type: string
   usuario: UsuarioAutenticado
 }
+
+/** O backend dev permite cadastro público somente de servidores. */
+export interface DadosCadastroServidor {
+  nome_completo: string
+  cpf: string
+  vinculo_institucional: string
+  email: string
+  senha: string
+}
