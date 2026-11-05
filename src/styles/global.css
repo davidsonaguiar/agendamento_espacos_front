@@ -398,3 +398,14 @@ a { color: inherit; }
 .agenda-card__duration { color: var(--color-muted); font-size: 13px; }
 @media (max-width: 760px) { .agenda-list { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .agenda-card { padding: 18px; } }
+
+/* Etapa 8.3: filtros locais, isolados na agenda. */
+.agenda-filters { min-width: 0; margin: 0 0 16px; padding: 0; border: 0; }
+.agenda-filters legend { margin-bottom: 10px; padding: 0; font-size: 15px; font-weight: 600; }
+.agenda-filters__options { display: flex; flex-wrap: wrap; gap: 8px; }
+.agenda-filters__button { max-width: 100%; min-height: 44px; padding: 10px 14px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-surface); color: #45544e; font: inherit; font-size: 14px; line-height: 1.4; text-align: left; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
+.agenda-filters__button:hover { border-color: var(--color-primary); }
+.agenda-filters__button[aria-pressed="true"] { border-color: var(--color-primary); background: var(--color-primary); color: #fff; font-weight: 600; }
+.agenda-filters__button:focus-visible { outline: 3px solid #88cbb2; outline-offset: 3px; }
+.agenda-results-count { margin: 0 0 18px; color: var(--color-muted); font-size: 13px; line-height: 1.5; }
+.agenda-empty { margin: 0; padding: 24px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface); color: #45544e; line-height: 1.5; overflow-wrap: anywhere; }
