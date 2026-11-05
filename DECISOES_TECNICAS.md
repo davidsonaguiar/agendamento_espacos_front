@@ -4,7 +4,7 @@
 
 O LabAgenda permite consultar laboratórios e preparar uma solicitação demonstrativa. Este é o repositório independente do frontend; o backend FastAPI é mantido separadamente.
 
-Estado de referência: branch `feature/frontend-laboratorios`, commit `938bafe`. As Etapas 7.1 a 7.5 e as Revisões R1, R2 e R3 estão concluídas e versionadas; a R2 atualizou esta documentação. O fluxo chega à prévia, sem integração HTTP, autenticação, envio real, persistência, aprovação de solicitações ou confirmação de reservas neste módulo.
+Estado de referência: branch `feature/frontend-laboratorios`, commit `a7ed68c` (último commit na conferência desta atualização). As Etapas 7.1 a 7.5 e as Revisões R1, R2 e R3 estão concluídas e versionadas; a R2 atualizou esta documentação. O fluxo chega à prévia, sem integração HTTP, autenticação, envio real, persistência, aprovação de solicitações ou confirmação de reservas neste módulo.
 
 ## 2. Stack e organização do repositório
 
@@ -21,6 +21,10 @@ React, TypeScript, Vite, React Router e CSS próprio, sem biblioteca adicional d
 | `src/main.tsx` | Inicialização do React com StrictMode e BrowserRouter |
 | `package.json` | Dependências e comandos disponíveis |
 
+### Diretriz de design e implementação
+
+O Figma permanece como referência principal de design e experiência do usuário. O contrato da API e as regras de negócio orientam as decisões funcionais; adaptações ao Figma são permitidas quando tecnicamente justificadas. As diferenças atuais não implicam refazer imediatamente as Etapas 7.1–7.5. Diferenças visuais e funcionais devem ser avaliadas e alinhadas com a equipe antes de alterações significativas. Não há referência específica de Agendamentos do Figma disponível neste repositório; a Etapa 8.2 usa os padrões visuais existentes.
+
 ## 3. Rotas e fluxo de navegação
 
 | Rota | Tela |
@@ -29,6 +33,7 @@ React, TypeScript, Vite, React Router e CSS próprio, sem biblioteca adicional d
 | `/laboratorios/:id` | Detalhes do laboratório |
 | `/laboratorios/:id/agendamento` | Calendário e seleção de intervalo |
 | `/laboratorios/:id/agendamento/detalhes` | Resumo, formulário de finalidade e prévia |
+| `/meus-agendamentos` | Agendamentos demonstrativos; implementação local da Etapa 8.2 em validação, ainda sem commit |
 
 Fluxo: catálogo → detalhes → calendário e horários → formulário → prévia. Formulário e prévia compartilham a última rota e alternam por estado React; não existe rota exclusiva da prévia.
 
@@ -77,7 +82,7 @@ As fontes dos detalhes e do calendário são distintas: próximos horários não
 
 Fixtures relativas e validações dependem do relógio local; um link pode deixar de ser válido com o passar dos dias. Horários já passados no dia atual ainda não são bloqueados. O filtro dos próximos horários não revalida a hora atual nem representa duração de reserva.
 
-Os avisos demonstrativos devem permanecer. “Meus agendamentos” e o perfil no cabeçalho não implementam navegação funcional ou autenticação.
+Os avisos demonstrativos devem permanecer. Na implementação local da Etapa 8.2, “Agendamentos” já permite navegação pelo cabeçalho; o perfil permanece ilustrativo e não há autenticação.
 
 ## 7. Adaptador e contrato de referência da API
 
@@ -127,12 +132,30 @@ Trabalho futuro de integração: obter IDs e catálogo reais; integrar usuário 
 
 Decisões pendentes: alinhar autenticação, acesso ao usuário, armazenamento do token e componentes compartilhados com a equipe; mapear dados visuais para o contrato real e confirmar o tratamento de segundos. Refinamentos de UX e regras temporais estão centralizados na seção seguinte. A hospedagem deve oferecer fallback para as rotas do BrowserRouter.
 
-Planejamento preliminar, sujeito à confirmação com a equipe:
+### Situação das próximas etapas
 
-- Etapa 8: Minha agenda / Meus agendamentos.
-- Etapa 9: Motivo de recusa.
+Etapa 8 — Minha agenda / Meus agendamentos, com título de página Agendamentos:
 
-Essas telas e integrações não estão implementadas. Formulário demonstrativo e prévia já pertencem às Etapas 7.4 e 7.5; não devem ser descritos como trabalho ainda não iniciado.
+| Subetapa | Situação conferida |
+| --- | --- |
+| 8.1 — Tipos e dados demonstrativos | Concluída e versionada em `a7ed68c`; tipos de resposta separados do payload de criação e coleção fictícia com seis status oficiais e múltiplos horários |
+| 8.2 — Página e navegação | Implementada localmente, com seis solicitações e todos os intervalos; validação final em andamento. O Git confirma alterações ainda não commitadas; versionamento pendente |
+| 8.3 — Filtros e estados da interface | Pendente |
+| 8.4 — Qualidade e regressão | Pendente |
+
+Etapa 9 — Apresentação do motivo de recusa: planejada, sem interface implementada. O contrato contém `decisao_justificativa`, usado para justificar decisões de aprovação e rejeição; sua apresentação deve respeitar o status e o significado do campo, sem tratar qualquer justificativa como motivo de recusa.
+
+A integração real permanece pendente de implementação e testes com o backend. Solicitação Pendente não representa reserva confirmada; mesmo a apresentação de Aprovado não deve inventar dados de confirmação de reserva. Formulário demonstrativo e prévia já pertencem às Etapas 7.4 e 7.5.
+
+### Feedback da equipe: terminologia
+
+Proposta de evolução ainda não implementada: substituir gradualmente a terminologia visível “Laboratórios” por “Espaços”, para abranger laboratórios, auditórios, salas e outros ambientes institucionais. O backend já utiliza o conceito de espaço. Revisar títulos, descrições, botões, navegação e mensagens após alinhar o alcance com a equipe. Isso não autoriza renomear automaticamente rotas, componentes, tipos ou contratos internos.
+
+### Feedback da equipe: integração e planejamento temporal
+
+Prioridade técnica: antecipar a integração gradual frontend/backend para identificar incompatibilidades reais. Avaliar autenticação JWT, permissões, disponibilidade, consultas, criação de solicitações, tratamento de erros e CORS. Substituir mocks por chamadas HTTP, isoladamente, não resolve essas dependências; a integração deve ocorrer em incrementos pequenos e verificáveis.
+
+Preservar a versão demonstrativa estável para a apresentação ao professor em **06/11/2026**, sem iniciar mudanças de integração às pressas antes dela. Após a apresentação, reavaliar com a equipe a ordem das próximas etapas e os incrementos de integração. **08/11/2026 é uma meta desejada de avanço, não um prazo garantido para concluir todas as etapas e a integração.**
 
 ### Melhorias e refinamentos pendentes
 
