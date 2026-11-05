@@ -1,6 +1,8 @@
-﻿import { Link } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 
 export function Cabecalho() {
+  const { pathname } = useLocation()
+  const secaoLaboratorios = pathname === '/' || pathname.startsWith('/laboratorios/')
   return (
     <header className="site-header">
       <div className="site-header__inner">
@@ -9,10 +11,10 @@ export function Cabecalho() {
           <span className="brand__name">LabAgenda</span>
         </Link>
         <nav className="site-nav" aria-label="Navegação principal">
-          <Link className="site-nav__link site-nav__link--active" to="/" aria-current="page">
+          <Link className={`site-nav__link${secaoLaboratorios ? ' site-nav__link--active' : ''}`} to="/" aria-current={pathname === '/' ? 'page' : secaoLaboratorios ? 'location' : undefined}>
             Laboratórios
           </Link>
-          <span className="site-nav__link">Meus agendamentos</span>
+          <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' site-nav__link--active' : ''}`} to="/meus-agendamentos">Agendamentos</NavLink>
           <span className="user-avatar" aria-label="Perfil de usuário" title="Perfil">UE</span>
         </nav>
       </div>

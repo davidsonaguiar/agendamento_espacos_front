@@ -1,4 +1,5 @@
 ﻿import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { MeusAgendamentos } from './pages/MeusAgendamentos'
 import { CatalogoLaboratorios } from './pages/CatalogoLaboratorios'
 import { DetalhesLaboratorio } from './pages/DetalhesLaboratorio'
 import { DetalhesSolicitacao } from './pages/DetalhesSolicitacao'
@@ -27,6 +28,7 @@ function App() {
       <Route path="/laboratorios/:id" element={<RotaDetalhesLaboratorio />} />
       <Route path="/laboratorios/:id/agendamento" element={<RotaSolicitacaoAgendamento />} />
       <Route path="/laboratorios/:id/agendamento/detalhes" element={<RotaSolicitacaoAgendamento detalhes />} />
+      <Route path="/meus-agendamentos" element={<MeusAgendamentos />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
