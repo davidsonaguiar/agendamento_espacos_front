@@ -409,3 +409,13 @@ a { color: inherit; }
 .agenda-filters__button:focus-visible { outline: 3px solid #88cbb2; outline-offset: 3px; }
 .agenda-results-count { margin: 0 0 18px; color: var(--color-muted); font-size: 13px; line-height: 1.5; }
 .agenda-empty { margin: 0; padding: 24px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface); color: #45544e; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* Catálogo real: apresentação neutra, sem atributos visuais derivados de fixtures. */
+.catalog-controls--api { grid-template-columns: 2fr repeat(3, minmax(0, 1fr)); }
+.catalog-data-note { color: #45544e; font-size: 14px; line-height: 1.5; }
+.real-space-card { max-width: 100%; overflow-wrap: anywhere; }
+.real-space-card dd { margin: 4px 0 12px; }
+.real-space-card h3 { font-size: 15px; }
+.real-space-card li { margin-bottom: 8px; }
+@media (max-width: 1100px) { .catalog-controls--api { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .catalog-controls--api { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
