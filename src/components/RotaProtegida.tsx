@@ -1,18 +1,8 @@
-
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import {
-  encerrarSessao,
-  obterExpiracaoToken,
-  obterTokenAcesso,
-  verificarSessao,
-} from '../services/autenticacao'
+import { obterExpiracaoToken, obterTokenAcesso, verificarSessao } from '../services/autenticacao'
 
-type EstadoSessao =
-  | 'verificando'
-  | 'autorizado'
-  | 'sem-sessao'
-  | 'indisponivel'
+type EstadoSessao = 'verificando' | 'autorizado' | 'sem-sessao' | 'indisponivel'
 
 export function RotaProtegida() {
   const location = useLocation()
@@ -21,86 +11,57 @@ export function RotaProtegida() {
 
   useEffect(() => {
     let ativo = true
+    let conferindo = false
     let temporizador: ReturnType<typeof setTimeout> | undefined
 
-    setEstado('verificando')
-
-    async function conferir() {
+    async function conferir(exibirCarregamento = true) {
+      if (!ativo || conferindo) return
+      conferindo = true
+      if (temporizador !== undefined) clearTimeout(temporizador)
+      if (exibirCarregamento) setEstado('verificando')
       try {
         const usuario = await verificarSessao()
-
         if (!ativo) return
-
         if (!usuario) {
           setEstado('sem-sessao')
           return
         }
-
         setEstado('autorizado')
-
-        // A rota expira também com a página aberta,
-        // sem depender de uma atualização.
         const expiracao = obterExpiracaoToken(obterTokenAcesso())
-
         if (expiracao !== null) {
-          temporizador = setTimeout(() => {
-            encerrarSessao()
-
-            if (ativo) {
-              setEstado('sem-sessao')
-            }
-          }, Math.max(0, expiracao - Date.now()))
+          // Renova antes do vencimento, evitando expirar durante uma página aberta.
+          const atraso = Math.max(1_000, expiracao - Date.now() - 30_000)
+          temporizador = setTimeout(() => { void conferir(false) }, atraso)
         }
       } catch {
-        if (ativo) {
-          setEstado('indisponivel')
-        }
+        if (ativo) setEstado('indisponivel')
+      } finally {
+        conferindo = false
       }
     }
 
+    const aoFocar = () => { void conferir(false) }
+    window.addEventListener('focus', aoFocar)
     void conferir()
-
     return () => {
       ativo = false
-
-      if (temporizador !== undefined) {
-        clearTimeout(temporizador)
-      }
+      window.removeEventListener('focus', aoFocar)
+      if (temporizador !== undefined) clearTimeout(temporizador)
     }
   }, [location.pathname, tentativa])
 
   if (estado === 'verificando') {
-    return (
-      <main className="access-feedback" role="status">
-        Verificando sua sessão...
-      </main>
-    )
+    return <main className="access-feedback" role="status">Verificando sua sessão...</main>
   }
-
   if (estado === 'sem-sessao') {
-    return (
-      <Navigate
-        to="/login"
-        replace
-        state={{ aviso: 'Faça login para acessar o sistema.' }}
-      />
-    )
+    return <Navigate to="/login" replace state={{ aviso: 'Faça login para acessar o sistema.', destino: location.pathname + location.search }} />
   }
-
   if (estado === 'indisponivel') {
-    return (
-      <main className="access-feedback" role="alert">
-        <h1>Não foi possível verificar sua sessão</h1>
-        <p>Verifique sua conexão com a API do COLAB.</p>
-        <button
-          type="button"
-          onClick={() => setTentativa(n => n + 1)}
-        >
-          Tentar novamente
-        </button>
-      </main>
-    )
+    return <main className="access-feedback" role="alert">
+      <h1>Não foi possível verificar sua sessão</h1>
+      <p>Verifique sua conexão com a API do COLAB.</p>
+      <button type="button" onClick={() => setTentativa(n => n + 1)}>Tentar novamente</button>
+    </main>
   }
-
   return <Outlet />
 }
