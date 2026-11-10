@@ -1,4 +1,5 @@
-export type PerfilUsuario = 'Administrador' | 'Coordenador' | 'Servidor' | 'Monitor' | 'Aluno'
+/** Perfis globais do backend dev. Coordenador e Monitor são papéis locais por espaço. */
+export type PerfilUsuario = 'Administrador' | 'Membro'
 
 export interface UsuarioAutenticado {
   id: number
@@ -12,12 +13,11 @@ export interface UsuarioAutenticado {
 
 export interface RespostaLogin {
   access_token: string
-  token_type: string
+  token_type: 'bearer'
   usuario: UsuarioAutenticado
 }
 
-/** O backend dev permite cadastro público somente de servidores. */
-export interface DadosCadastroServidor {
+export interface DadosCadastroMembro {
   nome_completo: string
   cpf: string
   vinculo_institucional: string
