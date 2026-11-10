@@ -1,7 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutAutenticacao } from '../components/LayoutAutenticacao'
-import { autenticarUsuario } from '../services/autenticacao'
+import { autenticarUsuario, desconectarUsuario } from '../services/autenticacao'
 
 export function Login() {
   const navigate = useNavigate()
@@ -11,7 +11,22 @@ export function Login() {
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
 
-  const aviso = (location.state as { aviso?: string } | null)?.aviso
+  const estado = location.state as { aviso?: string; destino?: string; logoutPendente?: boolean } | null
+  const aviso = estado?.aviso
+  const destino = estado?.destino?.startsWith('/') && !estado.destino.startsWith('//') && !estado.destino.includes('\\') ? estado.destino : '/'
+
+  async function tentarLogout() {
+    setCarregando(true)
+    setErro('')
+    try {
+      await desconectarUsuario()
+      navigate('/login', { replace: true, state: { aviso: 'Sessão encerrada.' } })
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : 'Não foi possível encerrar a sessão.')
+    } finally {
+      setCarregando(false)
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -23,7 +38,7 @@ export function Login() {
     setCarregando(true)
     try {
       await autenticarUsuario(identificacao.trim(), senha)
-      navigate('/', { replace: true })
+      navigate(destino, { replace: true })
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : 'Não foi possível entrar. Tente novamente.')
     } finally {
@@ -39,6 +54,7 @@ export function Login() {
       </div>
       <form className="login-form" onSubmit={handleSubmit}>
         {aviso && <p className="login-notice" role="status">{aviso}</p>}
+        {estado?.logoutPendente && <button type="button" className="login-submit" disabled={carregando} onClick={() => { void tentarLogout() }}>Tentar encerrar sessão novamente</button>}
         <label className="login-field">
           <span>E-mail ou CPF</span>
           <input
