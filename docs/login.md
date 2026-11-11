@@ -1,93 +1,200 @@
-# Módulo 1 — Login, autenticação e sessão
+# Login + Catálogo — integração I04-B2 a I04-B4B
 
-Origem: `feature/frontend-login`, commit `e07fdb6`.
-Composição I02-B1 em `feature/integracao-api`, ainda sem commit de merge.
+## Estado e referências
 
-## Telas e fluxos
+Registro de preparação em **10/11/2026**, na branch `feature/integracao-login-catalogo`,
+a partir de `14fe812`. Alterações B2, B3 e B4A permanecem sem commit e foram preservadas.
+A B4B altera somente configuração, manifesto/lockfile, infraestrutura de testes e esta documentação.
+Não houve merge, alteração do backend ou publicação nesta etapa.
 
-- `/login`: login com e-mail ou CPF e senha, via `POST /usuarios/login`.
-- `/cadastro`: cadastro público **exclusivamente de servidor**, via `POST /usuarios/servidor`. A API `dev` não oferece cadastro público de Aluno, Monitor, Coordenador e Administrador.
-- `/recuperar-senha`: orientação para procurar a coordenação. **Não há endpoint de recuperação de senha na API dev**; esta página não envia e-mails nem altera senhas.
-- Páginas de laboratório e agendamento: protegidas pela validação `GET /usuarios/me`, usando token Bearer.
-- Token JWT expirado ou rejeitado (401/403) termina a sessão e leva o usuário para `/login`. Erros temporários de rede exibem a opção de tentar novamente, sem apagar imediatamente o token.
+Referências estáticas:
 
-## Executar
+- Login: `origin/feature/frontend-login`, commit `2ca2591803a872ff5cf44f89a43b6098f8f41300`.
+- Catálogo: `feature/integracao-catalogo`, commit `14fe812c554605b08e35ba1c6304ede9592e8a02`.
+- Backend: `d9281780b06186916928a62f077f8e9e721b97ff`, cujos roteadores e schemas de autenticação foram lidos na B2.
 
-1. `npm ci`
-2. `npm run build`
-3. `node --test tests/autenticacao.test.mjs`
-4. Configure `.env.local` a partir de `.env.example`, usando `VITE_API_URL=http://localhost:8000`.
-5. Inicie o backend FastAPI da branch `dev` do repositório `davidsonaguiar/agendamento_espacos` com banco e variáveis de ambiente configurados.
-6. `npm run dev`; visite `http://localhost:5173/login`.
+A conferência de código não comprova operação com API, banco ou usuários reais.
 
-## Testes manuais com API real antes do merge
+## Contrato reconciliado
 
-- Com usuário real válido: autenticar, abrir o catálogo e recarregar a página.
-- Com senha incorreta: observar mensagem de erro, sem acesso ao catálogo.
-- Sem token: abrir `http://localhost:5173/` diretamente; deve redirecionar a `/login`.
-- JWT inválido/expirado: tentar `/` e verificar redirecionamento para `/login`.
-- Cadastro: testar criação de um **servidor** com SIAPE e CPF de teste autorizados; confirmar conflito (409) para duplicidade.
-- Backend fora do ar: acesso mostra erro de conexão/"Tentar novamente", sem simular login.
-- Recuperação de senha: deve exibir explicação de indisponibilidade, sem prometer um envio.
-- Abrir a página em uma janela estreita para validar o layout responsivo.
+| Operação | Requisição | Contrato utilizado |
+| --- | --- | --- |
+| Cadastro público | `POST /usuarios/` | Cria Membro; sem perfil no payload; resposta de usuário |
+| Login | `POST /usuarios/login` | `identificacao` e `senha`; resposta com `access_token`, `token_type=bearer` e usuário |
+| Renovação | `POST /usuarios/refresh` | Cookie HttpOnly; resposta de login e rotação do cookie |
+| Sessão | `GET /usuarios/me` | Bearer; valida usuário ativo no servidor |
+| Logout | `POST /usuarios/logout` | Revoga sessão associada ao cookie; HTTP 204 sem JSON |
+| Catálogo | `GET /espacos/?skip=0&limit=100` | Bearer; array direto de espaços com recursos e relações |
 
-## Limitações técnicas
+Perfis globais aceitos: `Membro` e `Administrador`. Coordenador e Monitor não são
+inventados como perfis globais ou permissões do frontend. Autorizações pertencem ao backend.
+O componente `CadastroServidor` e a rota `/cadastro` permanecem por compatibilidade,
+mas usam `cadastrarMembro`. Os aliases antigos de tipo/serviço permanecem temporariamente.
+O backend de referência conserva `/usuarios/servidor` como alias depreciado; o frontend usa `/usuarios/`.
 
-A navegação é protegida no React para experiência de uso; autorização e segurança de acesso a dados devem ser aplicadas pelas rotas do backend. O token é mantido em `sessionStorage` durante a aba atual. Não existe implementação de recuperação automática de senha sem contrato de API. Os testes automatizados isolam o serviço HTTP com mocks; **não substituem testes ponta a ponta com o backend e banco operantes**.
+O cadastro normaliza CPF e campos textuais, preserva a senha e não autentica automaticamente.
+Não há recuperação automática de senha, gestão de estoque, reserva independente de recursos
+ou Visão Gestor nesta composição.
 
+## Sessão, renovação e logout
 
-## Composição I02-B1
+- Access token e usuário ficam em `sessionStorage`; o JavaScript não lê o refresh cookie.
+- Chamadas de autenticação usam `credentials: include`, com timeout de 15 segundos.
+  O HTTP genérico oferece credenciais como opção; não acrescenta cookies nem refresh aos demais clientes.
+- O JWT local fornece apenas a expiração. A validade da sessão é confirmada pelo servidor.
+- O guard recupera sessão antes de redirecionar, renova 30 segundos antes de expirar e
+  revalida ao recuperar foco. Erros de rede exibem nova tentativa sem presumir sessão inválida.
+- Após 401 de `/me`, a recuperação tem uma renovação e uma repetição limitadas.
+- Verificações e refresh concorrentes compartilham promessas. Operações de cookie são
+  serializadas na aba e, quando disponível, com Web Locks entre abas da mesma origem.
+- Logout explícito chama o backend e limpa os dados locais imediatamente. Respostas atrasadas
+  de login, refresh ou `/me` não podem restaurar a sessão encerrada.
+- Se a revogação falhar, a interface informa isso e oferece nova tentativa. O bloqueio de
+  restauração fica na aba; não comprova revogação no servidor nem impede outra aba de usar um cookie válido.
+- Login retorna somente a rotas protegidas conhecidas, preservando query/fragmento internos;
+  origens externas, caminhos de autenticação e destinos inválidos retornam ao catálogo.
 
-O serviço de autenticação reutiliza src/services/http.ts. Não mantém fetch próprio,
-nem fallback de URL. VITE_API_URL é obrigatória conforme a I01; reiniciar o Vite
-após configurar o ambiente. ErroAutenticacao mantém as mensagens de detail e os
-fallbacks específicos de 401/403/409. Erros de configuração permanecem explícitos;
-respostas vazias, JSON inválido e dados de usuário inválidos são rejeitados.
-O cliente HTTP continua responsável apenas pelo transporte. A autenticação
-continua responsável pelo token, sessionStorage, validação de usuário e logout.
-JWT usa exp para expiração local; a autoridade para a sessão continua sendo /usuarios/me.
+## Catálogo e rotas preservadas
 
-As cinco rotas protegidas são /, /laboratorios/:id,
-/laboratorios/:id/agendamento, /laboratorios/:id/agendamento/detalhes e
-/meus-agendamentos. Login, cadastro e recuperação continuam públicos.
-Cabeçalho, estilos globais, dados demonstrativos e páginas existentes foram
-preservados. Não foi criado modo offline nem bypass de autenticação.
+| Rota | Comportamento atual |
+| --- | --- |
+| `/` | Catálogo da API; busca por nome do espaço ou recurso; filtros por bloco, capacidade e recurso |
+| `/laboratorios/:id` | Detalhes do ID real encontrado no catálogo; não presume endpoint individual |
+| `/laboratorios/:id/agendamento` | Bloqueio explícito: agendamento ainda não integrado |
+| `/laboratorios/:id/agendamento/detalhes` | Mesmo bloqueio; não exibe formulário ou horários fictícios |
+| `/meus-agendamentos` | Tela demonstrativa existente, identificada como tal; sem consulta real de solicitações |
+| `/login`, `/cadastro`, `/recuperar-senha` | Públicas; demais rotas acima protegidas |
 
-### Testes da composição
+Sem fallback silencioso para fixtures. Campos nulos recebem indicação de ausência; não são
+inventados sala, tema, imagens, categorias ou horários. Recursos indisponíveis continuam
+pesquisáveis, identificados como indisponíveis. Tipo de uso não é fornecido pelo contrato;
+o filtro foi retirado e a limitação é informada na interface.
 
-Executar no Windows:
-- node --test tests/http.test.mjs tests/autenticacao.test.mjs tests/rotas.test.mjs
-- npm.cmd run build
-- git diff --check
-- git diff --cached --check
+O catálogo carrega páginas de 100 até uma página curta. Detecta duplicatas, respostas inválidas
+e excesso de páginas; a guarda de 100 páginas falha explicitamente em vez de publicar truncamento.
+Resultados só são publicados após concluir toda a carga. Um 401 recuperável repete somente a
+página afetada, no máximo uma vez, com token renovado; não repete páginas já obtidas.
 
-Os testes de autenticação executam os serviços reais de autenticação e HTTP,
-substituindo apenas a variável de ambiente e mockando fetch/sessionStorage.
-Os testes de rotas compilam o App.tsx real com o Vite instalado, substituindo
-somente telas e guard por componentes vazios para inspecionar a configuração.
-Eles não executam efeitos do guard nem navegação em navegador. Não há ferramenta
-de DOM/browser configurada; não foram adicionadas dependências.
+Cancelamento interrompe a espera do consumidor, sem cancelar um refresh compartilhado necessário
+por outro consumidor. Respostas antigas e dados recebidos após logout são descartados.
 
-### Roteiro manual pendente
+Limitações conhecidas:
 
-1. Sem sessão, abrir diretamente cada uma das cinco rotas: esperar login, sem
-   conteúdo protegido. Conferir também recarregamento e navegação voltar/avançar.
-2. Autenticar com usuário válido, navegar pelas cinco rotas e recarregar
-   /meus-agendamentos. Conferir o link Agendamentos e indicação de seção ativa.
-3. Testar IDs inválidos nos três caminhos parametrizados e caminho desconhecido:
-   após validar sessão, esperar redirecionamento ao início.
-4. Testar expiração com página aberta e durante navegação; confirmar limpeza da
-   sessão e retorno ao login. Testar 401/403 na consulta de sessão.
-5. Com token existente, interromper conexão: esperar bloqueio com nova tentativa
-   sem apagar token. Restaurar conexão e tentar novamente.
-6. Conferir cadastro, conflito 409, credenciais incorretas e recuperação informativa.
-7. Conferir contraste dos horários selecionados, foco do título da seleção,
-   filtros da agenda e layout responsivo de autenticação e páginas existentes.
+- Offset não garante snapshot consistente se o banco mudar durante a leitura.
+- Renovação externa à carga (inclusive pelo guard) muda o token e pode invalidar a carga;
+  a interface oferece nova tentativa para não misturar sessões.
+- Detalhes recarregam o catálogo completo. Não há cache compartilhado nem endpoint individual presumido.
+- Timeout de autenticação não equivale a timeout de todas as consultas de espaços.
+- Disponibilidade cadastral não comprova horário livre nem reserva confirmada.
 
-### API real: pendências externas
+## Ambiente e deploy
 
-A API não foi iniciada nem validada nesta composição. No backend de referência,
-alinhar com o responsável: CORS para POST e Authorization entre origens diferentes;
-e chamadas de CredenciaisInvalidasErro com mensagem em seguranca_http.py, enquanto
-o construtor atual não recebe argumentos. Não corrigir esses pontos neste frontend.
-Validar depois host/origens permitidos, URL, usuário de teste e contratos reais.
+### Desenvolvimento: proxy local adotado
+
+Exemplo versionado em `.env.example`, sem credenciais:
+
+```dotenv
+VITE_API_URL=http://localhost:5173
+API_PROXY_TARGET=http://localhost:8000
+```
+
+Copiar para `.env.local` exige ação local; nenhum arquivo de ambiente real foi criado/alterado nesta etapa.
+`VITE_API_URL` deve ser absoluta, pois o cliente HTTP rejeita base relativa ou ausente.
+`API_PROXY_TARGET` é configuração do processo Vite, não uma variável pública `VITE_*`.
+
+O Vite usa porta 5173 com `strictPort` e encaminha `/usuarios`, `/espacos`, `/projetos`,
+`/solicitacoes` e `/agendamentos` para o backend configurado. O proxy evita CORS entre
+navegador e backend durante desenvolvimento, mas não elimina requisitos de cookie ou autorização.
+Usar consistentemente o mesmo host: não alternar `localhost` e `127.0.0.1` nas URLs da aplicação.
+Em acesso remoto, configurar a origem absoluta realmente acessível ao navegador e o backend
+acessível ao processo Vite. Reiniciar o Vite após mudar variáveis.
+
+### Produção e preview
+
+O proxy acima existe **somente em `npm run dev`**. Não está em `dist/` nem em `npm run preview`.
+Antes do build publicado, escolher uma das opções com a equipe responsável pelo deploy:
+
+1. Origem única com proxy reverso real para os caminhos da API e `VITE_API_URL` nessa origem.
+2. API direta, absoluta, com CORS e política de cookies compatíveis com a origem do frontend.
+
+As variáveis `VITE_*` são incorporadas ao build; não incluir segredos. Servir rotas do
+BrowserRouter com fallback adequado, sem interceptar as rotas da API.
+
+O backend de referência define refresh cookie HttpOnly, `Path=/usuarios`, `Secure` por padrão e
+`SameSite=Lax`. Validar Set-Cookie e envio em refresh/logout na origem final. HTTP remoto pode
+não aceitar cookie Secure; SameSite=Lax pode impedir envio em implantação cross-site.
+O frontend não remove essas proteções. Prefixos como `/api` exigem alinhamento do Path do cookie.
+API direta exige CORS com origem explícita, credenciais e preflight para métodos/cabeçalhos
+necessários, incluindo Content-Type e Authorization. Na referência estática, métodos e cabeçalhos
+CORS não estavam explicitamente configurados; confirmar com o backend, sem corrigi-lo aqui.
+
+## Dependências e comandos
+
+Instaladas com autorização via `npm install --save-dev`:
+
+| Dependência | Faixa declarada | Versão instalada nesta etapa |
+| --- | --- | --- |
+| `@playwright/test` | `^1.65.0` | `1.65.0` |
+| `@testing-library/react` | `^16.3.3` | `16.3.3` |
+| `@testing-library/user-event` | `^14.6.9` | `14.6.9` |
+| `jsdom` | `^31.0.0` | `31.0.0` |
+| `tsx` | `^4.23.15` | `4.23.15` |
+
+Manifesto e lockfile reconciliados. Instalação adicionou 50 pacotes e auditou 81, sem
+vulnerabilidades reportadas pelo npm. Não foi executado `npm audit fix` nem download de navegadores.
+
+**Aviso de runtime:** Node local é `24.14.0`. JSDOM 31 e `w3c-xmlserializer` 6 declaram
+`^22.22.2 || ^24.15.0 || >=26.0.0`; npm emitiu `EBADENGINE`. O manifesto registra essa faixa.
+Os testes passaram no Node local, mas isso não torna a versão suportada. Alinhar Node para
+uma versão suportada antes de padronizar instalação/CI; nenhuma atualização de Node foi feita.
+Os testes unitários também emitem o aviso experimental de `stripTypeScriptTypes`.
+
+```sh
+npm run test:unit        # Node: serviços, contrato, paginação, rotas e ciclos isolados de hooks
+npm run test:components  # Testing Library + JSDOM, API simulada
+npm test                # unitários e componentes; sem servidor
+npm run typecheck       # aplicação, Vite, testes e configuração Playwright; sem emissão
+npm run build           # TypeScript e bundle Vite
+npm run check           # npm test + typecheck + build; NÃO inicia E2E
+```
+
+`npm run typecheck:tests` verifica os arquivos de componentes, E2E e a configuração sem
+executar Playwright. Com TypeScript 7, usa `--ignoreConfig` ao fornecer arquivos explicitamente.
+Os testes de componentes usam os componentes reais, com mocks de HTTP que tratam `/espacos/`
+como array e rejeitam chamadas inesperadas. Dados de teste não são fallback de produção.
+
+### E2E preparados, não executados
+
+`tests/e2e/autenticacao.spec.ts` contém 19 cenários: os 14 da referência adaptados e cinco
+novos de catálogo, retorno ao ID real, dois acessos bloqueados e recuperação de 401 do catálogo.
+A API é simulada por interceptação de requisições. Mesmo quando aprovados futuramente,
+esses cenários não substituirão testes com backend e banco reais.
+
+`playwright.config.ts` usa Chromium e servidor Vite na porta 4173. **Executar `npm run test:e2e`
+inicia servidor** e depende de navegador disponível: exige autorização específica.
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` permite indicar executável existente. Não houve
+instalação de navegador, execução E2E ou inicialização de servidor nesta B4B.
+
+## Resultados: histórico e integração atual
+
+| Etapa | Evidência |
+| --- | --- |
+| Login de referência `2ca2591` | Documentou 70 testes de serviços/rotas, 10 de componentes e build aprovados. Os 14 E2E NÃO foram aprovados: navegador bloqueado antes das interações. Não reexecutados nesta branch |
+| I04-B2 | 83 testes de autenticação/HTTP e TypeScript aprovados |
+| I04-B3 | 139 testes combinados e TypeScript aprovados |
+| I04-B4A | 147 testes, TypeScript e build aprovados |
+| I04-B4B | 147 testes unitários e 16 testes de componentes aprovados; TypeScript da aplicação/configuração/testes e build aprovados. E2E somente preparados e verificados estaticamente, não executados |
+
+Os resultados atuais usam API simulada. Testes DOM não comprovam layout, cookies reais,
+CORS, autorização do servidor ou persistência. Não houve validação ponta a ponta real.
+
+## Pendências para I04-B5
+
+1. Alinhar uma versão suportada do Node, mantendo as versões de ferramentas aprovadas.
+2. Definir origem, URL da API e configuração de proxy/deploy com a equipe.
+3. Com autorização, validar backend `d928178`, banco populado e usuários de teste Membro/Administrador.
+4. Validar cadastro, login por CPF/e-mail, `/me`, cookies, renovação e revogação após logout.
+5. Conferir catálogo real por perfil, recursos, paginação, 401 durante carga e erros sem fixtures.
+6. Validar duas abas, foco, navegação/retorno, refresh concorrente e perda de rede durante logout.
+7. Autorizar separadamente Chromium/servidor/E2E; revisar responsividade, teclado e acessibilidade visual.
+8. Manter calendário/formulário bloqueados até sua integração e Meus Agendamentos identificado como demonstrativo.

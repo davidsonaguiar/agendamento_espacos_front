@@ -1,8 +1,8 @@
-﻿import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { adaptarEspaco } from '../data/catalogoEspacos'
 import { listarEspacos } from '../services/espacos'
-import { encerrarSessao } from '../services/autenticacao'
+import { obterTokenAcesso } from '../services/autenticacao'
 import { ErroHttp } from '../services/http'
 import type { EspacoCatalogo } from '../types/espaco'
 
@@ -13,25 +13,32 @@ type EstadoCatalogo =
 
 export function useCatalogoEspacos() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [estado, setEstado] = useState<EstadoCatalogo>({ tipo: 'carregando' })
   const [tentativa, setTentativa] = useState(0)
   useEffect(() => {
     const controle = new AbortController()
+    let ativo = true
+    const voltarAoLogin = () => navigate('/login', { replace: true,
+      state: { aviso: 'Sua sessão expirou. Entre novamente.', destino: location.pathname + location.search } })
     setEstado({ tipo: 'carregando' })
     void listarEspacos(controle.signal).then(espacos => {
-      if (!controle.signal.aborted) setEstado({ tipo: 'pronto', espacos: espacos.map(adaptarEspaco) })
+      if (!ativo || controle.signal.aborted) return
+      if (!obterTokenAcesso()) { voltarAoLogin(); return }
+      setEstado({ tipo: 'pronto', espacos: espacos.map(adaptarEspaco) })
     }).catch((erro: unknown) => {
-      if (controle.signal.aborted) return
+      if (!ativo || controle.signal.aborted) return
+      // O serviço já tentou recuperar o 401. Não limpa uma sessão nova neste hook.
       if (erro instanceof ErroHttp && erro.status === 401) {
-        encerrarSessao()
-        navigate('/login', { replace: true, state: { aviso: 'Sua sessão expirou. Entre novamente.' } })
+        if (!obterTokenAcesso()) voltarAoLogin()
+        else setEstado({ tipo: 'erro', mensagem: 'A sessão mudou durante a consulta. Tente carregar o catálogo novamente.' })
         return
       }
       setEstado({ tipo: 'erro', mensagem: erro instanceof ErroHttp && erro.status === 403
         ? 'Você não tem autorização para consultar o catálogo.'
         : erro instanceof Error ? erro.message : 'Não foi possível carregar o catálogo.' })
     })
-    return () => controle.abort()
-  }, [navigate, tentativa])
+    return () => { ativo = false; controle.abort() }
+  }, [navigate, tentativa, location.pathname, location.search])
   return { estado, tentarNovamente: () => setTentativa(valor => valor + 1) }
 }

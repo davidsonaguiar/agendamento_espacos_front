@@ -1,5 +1,5 @@
-﻿import { requisitar, ErroHttp } from './http'
-import { obterTokenAcesso, tokenExpirou } from './autenticacao'
+import { requisitar, ErroHttp } from './http'
+import { obterTokenAcesso, tokenExpirou, renovarSessao, encerrarSessao } from './autenticacao'
 import type { EspacoResposta } from '../types/espaco'
 
 type Registro = Record<string, unknown>
@@ -37,18 +37,71 @@ export function validarPaginaEspacos(valor: unknown): EspacoResposta[] {
   return valor as EspacoResposta[]
 }
 
-/** Sem total no contrato: só uma página menor que limit conclui a leitura.
- * Guarda de 100 páginas: falha explícita, nunca apresenta truncamento como sucesso.
+/** Cancela a espera deste consumidor; não aborta o refresh compartilhado da B2. */
+function aguardar<T>(promessa: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promessa
+  return new Promise((resolve, reject) => {
+    const cancelar = () => reject(signal.reason)
+    if (signal.aborted) cancelar()
+    else signal.addEventListener('abort', cancelar, { once: true })
+    void promessa.then(resolve, reject).finally(() => signal.removeEventListener('abort', cancelar))
+  })
+}
+
+/** Sem total: só uma página menor que limit conclui a leitura. Guarda de 100 páginas.
  * Offset não garante snapshot se o banco mudar durante a leitura.
+ * Uma troca externa do token invalida a carga; não mistura respostas entre sessões.
  */
 export async function listarEspacos(signal?: AbortSignal): Promise<EspacoResposta[]> {
-  const token = obterTokenAcesso()
-  if (!token || tokenExpirou(token)) throw new ErroHttp('http', 'Sua sessão expirou. Entre novamente.', 401)
+  let tokenCarga = obterTokenAcesso()
+  const sessaoInvalida = () => new ErroHttp('http', 'Sua sessão expirou. Entre novamente.', 401)
+  const conferir = () => {
+    signal?.throwIfAborted()
+    const atual = obterTokenAcesso()
+    if (!atual) throw sessaoInvalida()
+    if (atual !== tokenCarga) throw new ErroHttp('resposta', 'A sessão mudou durante a consulta. Tente carregar o catálogo novamente.')
+  }
+  const renovar = async () => {
+    signal?.throwIfAborted()
+    const sessao = await aguardar(renovarSessao(), signal)
+    signal?.throwIfAborted()
+    if (!sessao || obterTokenAcesso() !== sessao.access_token) throw sessaoInvalida()
+    tokenCarga = sessao.access_token
+  }
+  signal?.throwIfAborted()
+  const renovacaoInicial = !tokenCarga || tokenExpirou(tokenCarga)
+  if (renovacaoInicial) await renovar()
   const resultado: EspacoResposta[] = []
   const ids = new Set<number>()
   const limit = 100
   for (let pagina = 0; pagina < 100; pagina++) {
-    const dados = validarPaginaEspacos(await requisitar<unknown>(`/espacos/?skip=${pagina * limit}&limit=${limit}`, { token, signal }))
+    conferir()
+    let renovou = pagina === 0 && renovacaoInicial
+    if (tokenExpirou(tokenCarga)) { await renovar(); renovou = true }
+    const caminho = `/espacos/?skip=${pagina * limit}&limit=${limit}`
+    let resposta: unknown
+    try {
+      resposta = await requisitar<unknown>(caminho, { token: tokenCarga!, signal })
+    } catch (erro) {
+      conferir()
+      if (!(erro instanceof ErroHttp) || erro.status !== 401) throw erro
+      if (renovou) { encerrarSessao(); throw sessaoInvalida() }
+      await renovar()
+      conferir()
+      // Uma única repetição da mesma página, sem repetir páginas já recebidas.
+      try {
+        resposta = await requisitar<unknown>(caminho, { token: tokenCarga!, signal })
+      } catch (erroRepetido) {
+        conferir()
+        if (erroRepetido instanceof ErroHttp && erroRepetido.status === 401) {
+          encerrarSessao()
+          throw sessaoInvalida()
+        }
+        throw erroRepetido
+      }
+    }
+    conferir()
+    const dados = validarPaginaEspacos(resposta)
     if (dados.length > limit || dados.some(espaco => ids.has(espaco.id))) {
       throw new ErroHttp('resposta', 'A paginação do catálogo retornou dados inconsistentes. Tente novamente.')
     }

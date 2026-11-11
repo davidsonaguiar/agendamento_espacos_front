@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict'
+import assert from 'node:assert/strict'
 import { test, afterEach, mock } from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { stripTypeScriptTypes } from 'node:module'
@@ -121,4 +121,36 @@ test('URLs externas não podem substituir a API configurada', async () => {
     await assert.rejects(api.requisitar(caminho), erro => erro.tipo === 'configuracao')
   }
   assert.equal(fetch.mock.calls.length, 0)
+})
+
+test('credenciais de cookie são opt-in e repassadas sem alterar os demais clientes', async () => {
+  const { requisitar } = await carregar('https://api.example.test')
+  const credenciais = []
+  simular(async (_url, opcoes) => {
+    credenciais.push(opcoes.credentials)
+    return Response.json({ ok: true })
+  })
+  await requisitar('/usuarios/refresh', { method: 'POST', credentials: 'include' })
+  await requisitar('/espacos')
+  assert.deepEqual(credenciais, ['include', undefined])
+})
+
+test('credentials preserva Bearer, JSON e signal sem impor cookies por padrão', async () => {
+  const controle = new AbortController()
+  const fetch = simular(async () => resposta('{}'))
+  await api.requisitar('usuarios/me', { method: 'POST', body: { exemplo: true }, token: 'token-ficticio', credentials: 'include', signal: controle.signal })
+  const opcoes = fetch.mock.calls[0].arguments[1]
+  assert.equal(opcoes.credentials, 'include')
+  assert.equal(opcoes.signal, controle.signal)
+  assert.equal(opcoes.headers.get('Authorization'), 'Bearer token-ficticio')
+  assert.equal(opcoes.headers.get('Content-Type'), 'application/json')
+  assert.equal(opcoes.body, JSON.stringify({ exemplo: true }))
+  await api.requisitar('espacos/', { credentials: 'omit' })
+  assert.equal(fetch.mock.calls[1].arguments[1].credentials, 'omit')
+})
+
+test('401 com credentials não inicia renovação nem repetição no HTTP genérico', async () => {
+  const fetch = simular(async () => resposta('{"detail":"Sessão inválida"}', 401))
+  await assert.rejects(api.requisitar('usuarios/me', { credentials: 'include' }), erro => erro.tipo === 'http' && erro.status === 401)
+  assert.equal(fetch.mock.calls.length, 1)
 })

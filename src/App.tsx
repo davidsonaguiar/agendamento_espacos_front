@@ -1,4 +1,5 @@
-﻿import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+﻿import './styles/logout.css'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { MeusAgendamentos } from './pages/MeusAgendamentos'
 import { CatalogoLaboratorios } from './pages/CatalogoLaboratorios'
 import { DetalhesEspacoIntegrado, AgendamentoIntegracaoPendente } from './pages/DetalhesEspacoIntegrado'

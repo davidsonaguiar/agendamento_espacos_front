@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "frontend",
   "private": true,
   "version": "0.0.0",
@@ -6,7 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "npm run test:unit && npm run test:components",
+    "test:unit": "node --test tests/*.test.mjs",
+    "test:components": "node --import ./tests/register-dom.mjs --test tests/*.test.tsx",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit --incremental false && tsc -p tsconfig.node.json --noEmit --incremental false && npm run typecheck:tests",
+    "check": "npm test && npm run typecheck && npm run build",
+    "typecheck:tests": "tsc --ignoreConfig --noEmit --skipLibCheck --module esnext --moduleResolution bundler --target es2023 --jsx react-jsx --types node,vite/client --lib es2023,dom tests/componentes.test.tsx tests/e2e/autenticacao.spec.ts playwright.config.ts"
   },
   "dependencies": {
     "react": "^19.3.1",
@@ -14,11 +21,19 @@
     "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.9",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^31.0.0",
+    "tsx": "^4.23.15",
     "typescript": "~7.0.2",
     "vite": "^8.3.5"
+  },
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   }
 }

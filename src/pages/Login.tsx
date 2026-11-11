@@ -1,7 +1,20 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutAutenticacao } from '../components/LayoutAutenticacao'
-import { autenticarUsuario } from '../services/autenticacao'
+import { autenticarUsuario, desconectarUsuario } from '../services/autenticacao'
+
+/** Retorno restrito às rotas protegidas existentes; nunca aceita outra origem. */
+export function destinoAposLogin(valor: unknown): string {
+  if (typeof valor !== 'string' || !valor.startsWith('/') || valor.startsWith('//')
+    || /[\\\s\u0000-\u001f\u007f]/u.test(valor)) return '/'
+  try {
+    const url = new URL(valor, 'https://labagenda.invalid')
+    if (url.origin !== 'https://labagenda.invalid') return '/'
+    // Não retorna às telas de autenticação nem a caminhos desconhecidos.
+    if (!/^\/(?:meus-agendamentos|laboratorios\/[1-9]\d*(?:\/agendamento(?:\/detalhes)?)?)?$/.test(url.pathname)) return '/'
+    return url.pathname + url.search + url.hash
+  } catch { return '/' }
+}
 
 export function Login() {
   const navigate = useNavigate()
@@ -11,7 +24,23 @@ export function Login() {
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
 
-  const aviso = (location.state as { aviso?: string } | null)?.aviso
+  const estado = location.state && typeof location.state === 'object'
+    ? location.state as { aviso?: unknown; destino?: unknown; logoutPendente?: unknown } : null
+  const aviso = typeof estado?.aviso === 'string' ? estado.aviso : undefined
+  const destino = destinoAposLogin(estado?.destino)
+
+  async function tentarLogout() {
+    setCarregando(true)
+    setErro('')
+    try {
+      await desconectarUsuario()
+      navigate('/login', { replace: true, state: { aviso: 'Sessão encerrada.' } })
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : 'Não foi possível encerrar a sessão.')
+    } finally {
+      setCarregando(false)
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -23,7 +52,7 @@ export function Login() {
     setCarregando(true)
     try {
       await autenticarUsuario(identificacao.trim(), senha)
-      navigate('/', { replace: true })
+      navigate(destino, { replace: true })
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : 'Não foi possível entrar. Tente novamente.')
     } finally {
@@ -39,6 +68,7 @@ export function Login() {
       </div>
       <form className="login-form" onSubmit={handleSubmit}>
         {aviso && <p className="login-notice" role="status">{aviso}</p>}
+        {estado?.logoutPendente === true && <button type="button" className="login-submit" disabled={carregando} onClick={() => { void tentarLogout() }}>Tentar encerrar sessão novamente</button>}
         <label className="login-field">
           <span>E-mail ou CPF</span>
           <input

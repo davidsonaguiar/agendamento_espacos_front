@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict'
+import assert from 'node:assert/strict'
 import { test, beforeEach } from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { stripTypeScriptTypes } from 'node:module'
@@ -30,6 +30,7 @@ async function modulo(caminho) {
 const servico = await import(await modulo('../src/services/espacos.ts'))
 const catalogo = await import(await modulo('../src/data/catalogoEspacos.ts'))
 const http = await import(await modulo('../src/services/http.ts'))
+const auth = await import(await modulo('../src/services/autenticacao.ts'))
 const { CartaoEspaco } = await import(await modulo('../src/components/CartaoEspaco.tsx'))
 const { MemoryRouter } = await import('react-router-dom')
 const storage = new Map()
@@ -114,15 +115,6 @@ test('falha de rede é propagada sem fixture', async () => {
 for (const status of [401, 403]) test(`erro HTTP ${status} mantém classificação`, async () => {
   globalThis.fetch = async () => resposta({ detail: 'Acesso negado' }, status)
   await assert.rejects(servico.listarEspacos(), erro => erro.status === status)
-})
-test('sem token ou token expirado não consulta API', async () => {
-  let chamadas = 0
-  globalThis.fetch = async () => { chamadas++; return resposta([]) }
-  storage.clear()
-  await assert.rejects(servico.listarEspacos(), erro => erro.status === 401)
-  storage.set('labagenda.access_token', `a.${Buffer.from(JSON.stringify({ exp: 1 })).toString('base64url')}.c`)
-  await assert.rejects(servico.listarEspacos(), erro => erro.status === 401)
-  assert.equal(chamadas, 0)
 })
 test('pagina até resposta curta, envia Bearer e inclui resultado após os primeiros 100', async () => {
   const urls = []
@@ -243,4 +235,318 @@ test('detalhe real não oferece horários ou formulário fictícios', async () =
   }, { id: '1' })
   assert.match(html, /ainda não estão integrados/)
   assert.doesNotMatch(html, /Próximos horários livres|09:00|Sala 201|Revisar solicitação/)
+})
+
+const usuarioB3 = { id: 1, nome_completo: 'Membro', cpf: '00000000001', vinculo_institucional: 'MAT1', email: 'membro@example.com', perfil: 'Membro', ativo: true }
+const tokenB3 = exp => `a.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.c`
+const renovadaB3 = () => ({ access_token: tokenB3(Date.now() / 1000 + 3600), token_type: 'bearer', usuario: usuarioB3 })
+const turnoB3 = () => new Promise(resolve => setImmediate(resolve))
+
+test('token expirado ou ausente recupera cookie antes de consultar espaços', async () => {
+  for (const token of [null, tokenB3(1)]) {
+    storage.clear()
+    if (token) storage.set('labagenda.access_token', token)
+    const chamadas = []
+    const nova = renovadaB3()
+    globalThis.fetch = async (url, opcoes) => {
+      chamadas.push(new URL(url).pathname)
+      if (url.endsWith('/refresh')) {
+        assert.equal(opcoes.credentials, 'include')
+        return resposta(nova)
+      }
+      assert.equal(opcoes.headers.get('Authorization'), `Bearer ${nova.access_token}`)
+      return resposta([espaco()])
+    }
+    assert.equal((await servico.listarEspacos()).length, 1)
+    assert.deepEqual(chamadas, ['/usuarios/refresh', '/espacos/'])
+  }
+})
+test('401 persistente repete a página uma vez e não gira refresh indefinidamente', async () => {
+  let paginas = 0, refresh = 0
+  globalThis.fetch = async url => {
+    if (url.endsWith('/refresh')) { refresh++; return resposta(renovadaB3()) }
+    paginas++; return resposta({}, 401)
+  }
+  await assert.rejects(servico.listarEspacos(), erro => erro.status === 401)
+  assert.equal(paginas, 2)
+  assert.equal(refresh, 1)
+})
+test('refresh preventivo já realizado não é repetido após 401 da primeira página', async () => {
+  storage.set('labagenda.access_token', tokenB3(1))
+  let refresh = 0, paginas = 0
+  globalThis.fetch = async url => {
+    if (url.endsWith('/refresh')) { refresh++; return resposta(renovadaB3()) }
+    paginas++; return resposta({}, 401)
+  }
+  await assert.rejects(servico.listarEspacos(), erro => erro.status === 401)
+  assert.equal(refresh, 1)
+  assert.equal(paginas, 1)
+})
+test('refresh recusado não repete página; falha de rede preserva sessão', async () => {
+  for (const falha of ['recusado', 'rede', 'invalido']) {
+    storage.set('labagenda.access_token', 'token-teste')
+    let paginas = 0
+    globalThis.fetch = async url => {
+      if (url.endsWith('/refresh')) {
+        if (falha === 'rede') throw new TypeError('offline')
+        return resposta({}, falha === 'recusado' ? 401 : 200)
+      }
+      paginas++; return resposta({}, 401)
+    }
+    await assert.rejects(servico.listarEspacos(), erro => falha === 'recusado' ? erro.status === 401 : erro.status === undefined)
+    assert.equal(paginas, 1)
+    assert.equal(auth.obterTokenAcesso(), falha === 'recusado' ? null : 'token-teste')
+  }
+})
+test('expiração em página posterior repete apenas skip=100 com o token renovado', async () => {
+  const chamadas = []
+  let segunda = 0
+  const nova = renovadaB3()
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push(new URL(url).pathname + new URL(url).search)
+    if (url.endsWith('/refresh')) return resposta(nova)
+    if (url.includes('skip=0&')) return resposta(Array.from({ length: 100 }, (_, i) => espaco(i + 1)))
+    if (++segunda === 1) return resposta({}, 401)
+    assert.equal(opcoes.headers.get('Authorization'), `Bearer ${nova.access_token}`)
+    return resposta([espaco(101)])
+  }
+  assert.equal((await servico.listarEspacos()).length, 101)
+  assert.deepEqual(chamadas, ['/espacos/?skip=0&limit=100', '/espacos/?skip=100&limit=100', '/usuarios/refresh', '/espacos/?skip=100&limit=100'])
+})
+test('duas cargas concorrentes compartilham o refresh da B2', async () => {
+  let liberar, refresh = 0, paginas = 0
+  globalThis.fetch = async url => {
+    if (url.endsWith('/refresh')) {
+      refresh++
+      return new Promise(resolve => { liberar = () => resolve(resposta(renovadaB3())) })
+    }
+    return ++paginas <= 2 ? resposta({}, 401) : resposta([])
+  }
+  const a = servico.listarEspacos(), b = servico.listarEspacos()
+  await turnoB3()
+  assert.equal(refresh, 1)
+  liberar()
+  assert.deepEqual(await Promise.all([a, b]), [[], []])
+  assert.equal(paginas, 4)
+})
+test('cancelamento durante refresh rejeita imediatamente e não repete página', async () => {
+  let liberar, paginas = 0
+  globalThis.fetch = async url => {
+    if (url.endsWith('/refresh')) return new Promise(resolve => { liberar = () => resolve(resposta(renovadaB3())) })
+    paginas++; return resposta({}, 401)
+  }
+  const controle = new AbortController()
+  const pendente = servico.listarEspacos(controle.signal)
+  const rejeicao = assert.rejects(pendente, erro => erro.name === 'AbortError')
+  await turnoB3()
+  controle.abort()
+  await rejeicao
+  liberar()
+  await turnoB3()
+  assert.equal(paginas, 1)
+})
+test('cancelar um consumidor não cancela outro que aguarda o mesmo refresh', async () => {
+  let liberar
+  globalThis.fetch = async url => url.endsWith('/refresh')
+    ? new Promise(resolve => { liberar = () => resolve(resposta(renovadaB3())) })
+    : auth.tokenExpirou() ? resposta({}, 401) : resposta([])
+  storage.set('labagenda.access_token', tokenB3(1))
+  const controle = new AbortController()
+  const a = servico.listarEspacos(controle.signal), b = servico.listarEspacos()
+  const rejeicao = assert.rejects(a, erro => erro.name === 'AbortError')
+  await turnoB3()
+  controle.abort()
+  await rejeicao
+  liberar()
+  assert.deepEqual(await b, [])
+})
+test('logout durante resposta 200 impede publicação e não inicia refresh', async () => {
+  let liberar, refresh = 0
+  globalThis.fetch = async url => {
+    if (url.endsWith('/logout')) return new Response(null, { status: 204 })
+    if (url.endsWith('/refresh')) { refresh++; return resposta(renovadaB3()) }
+    return new Promise(resolve => { liberar = () => resolve(resposta([espaco()])) })
+  }
+  const carga = servico.listarEspacos()
+  const rejeicao = assert.rejects(carga, erro => erro.status === 401)
+  await auth.desconectarUsuario()
+  liberar()
+  await rejeicao
+  assert.equal(refresh, 0)
+  assert.equal(auth.obterTokenAcesso(), null)
+})
+test('logout durante refresh impede retry e não restaura sessão', async () => {
+  let liberar, paginas = 0
+  globalThis.fetch = async url => {
+    if (url.endsWith('/logout')) return new Response(null, { status: 204 })
+    if (url.endsWith('/refresh')) return new Promise(resolve => { liberar = () => resolve(resposta(renovadaB3())) })
+    paginas++; return resposta({}, 401)
+  }
+  const carga = servico.listarEspacos()
+  const rejeicao = assert.rejects(carga, erro => erro.status === 401)
+  await turnoB3()
+  const logout = auth.desconectarUsuario()
+  liberar()
+  await Promise.all([rejeicao, logout])
+  assert.equal(paginas, 1)
+  assert.equal(auth.obterTokenAcesso(), null)
+})
+test('troca externa de token descarta resposta antiga sem apagar sessão nova', async () => {
+  let liberar
+  globalThis.fetch = async () => new Promise(resolve => { liberar = () => resolve(resposta([espaco()])) })
+  const carga = servico.listarEspacos()
+  storage.set('labagenda.access_token', 'nova-sessao')
+  liberar()
+  await assert.rejects(carga, /sessão mudou/)
+  assert.equal(auth.obterTokenAcesso(), 'nova-sessao')
+})
+
+// Executor isolado do ciclo useState/useEffect: sem DOM, navegador ou pacotes novos.
+// Exercita o código real com fronteiras de autenticação/transporte controladas.
+let executorIdB3 = 0
+async function executarHooksB3(caminho, nome, modulos) {
+  const chave = `__labagendaHooksB3_${++executorIdB3}`
+  const estados = [], efeitos = [], timers = new Map()
+  let indiceEstado = 0, indiceEfeito = 0, montado = true, agendado = false, renderizar
+  const ambiente = { modulos, window: new EventTarget() }
+  ambiente.setTimeout = (callback, atraso) => { const id = {}; timers.set(id, { callback, atraso }); return id }
+  ambiente.clearTimeout = id => timers.delete(id)
+  ambiente.modulos.react = {
+    useState(inicial) {
+      const indice = indiceEstado++
+      if (!(indice in estados)) estados[indice] = inicial
+      return [estados[indice], valor => {
+        if (!montado) throw Error('Atualização após desmontagem')
+        const proximo = typeof valor === 'function' ? valor(estados[indice]) : valor
+        if (Object.is(estados[indice], proximo)) return
+        estados[indice] = proximo
+        if (!agendado) {
+          agendado = true
+          queueMicrotask(() => { agendado = false; if (montado) renderizar() })
+        }
+      }]
+    },
+    useEffect(callback, deps) {
+      const indice = indiceEfeito++
+      const anterior = efeitos[indice]
+      if (!anterior || deps.some((valor, i) => !Object.is(valor, anterior.deps[i]))) {
+        anterior?.limpar?.()
+        efeitos[indice] = { deps, callback, pendente: true }
+      }
+    },
+  }
+  globalThis[chave] = ambiente
+  const fonte = await readFile(new URL(caminho, import.meta.url), 'utf8')
+  let codigo = (await transformWithOxc(fonte, caminho, { jsx: { runtime: 'automatic' } })).code
+  codigo = codigo.replace(/from\s*["']([^"']+)["']/g, (_trecho, referencia) => {
+    const mock = ambiente.modulos[referencia]
+    if (!mock) return `from '${import.meta.resolve(referencia)}'`
+    const exports = Object.keys(mock).map(nome => `export const ${nome} = globalThis['${chave}'].modulos[${JSON.stringify(referencia)}].${nome}`).join('\n')
+    return `from 'data:text/javascript;base64,${Buffer.from(exports).toString('base64')}'`
+  })
+  codigo = `const window = globalThis['${chave}'].window; const setTimeout = globalThis['${chave}'].setTimeout; const clearTimeout = globalThis['${chave}'].clearTimeout;\n` + codigo
+  const componente = (await import(`data:text/javascript;base64,${Buffer.from(codigo).toString('base64')}`))[nome]
+  const controle = {
+    atual: null, timers, eventos: ambiente.window,
+    render() { renderizar() },
+    desmontar() { montado = false; efeitos.forEach(efeito => efeito.limpar?.()); delete globalThis[chave] },
+    async flush() { await new Promise(resolve => setImmediate(resolve)) },
+  }
+  renderizar = () => {
+    indiceEstado = 0; indiceEfeito = 0
+    controle.atual = componente()
+    efeitos.forEach(efeito => {
+      if (efeito.pendente) { efeito.pendente = false; efeito.limpar = efeito.callback() }
+    })
+  }
+  renderizar()
+  return controle
+}
+
+async function montarCatalogoB3(t, listar, search = '') {
+  const navegacoes = []
+  const navegar = (destino, opcoes) => navegacoes.push({ destino, opcoes })
+  const location = { pathname: '/', search }
+  const hook = await executarHooksB3('../src/hooks/useCatalogoEspacos.ts', 'useCatalogoEspacos', {
+    'react-router-dom': { useNavigate: () => navegar, useLocation: () => location },
+    '../data/catalogoEspacos': catalogo,
+    '../services/espacos': { listarEspacos: listar },
+    '../services/autenticacao': auth,
+    '../services/http': http,
+  })
+  t.after(() => hook.desmontar())
+  return { hook, location, navegacoes }
+}
+test('hook descarta resposta antiga após mudança de query/filtros', async t => {
+  const pendentes = []
+  const { hook, location } = await montarCatalogoB3(t, signal => new Promise(resolve => pendentes.push({ signal, resolve })))
+  location.search = '?busca=novo'
+  hook.render()
+  assert.equal(pendentes[0].signal.aborted, true)
+  pendentes[1].resolve([espaco(2, { nome: 'Novo' })])
+  await hook.flush()
+  assert.equal(hook.atual.estado.espacos[0].id, 2)
+  pendentes[0].resolve([espaco(1, { nome: 'Antigo' })])
+  await hook.flush()
+  assert.equal(hook.atual.estado.espacos[0].id, 2)
+})
+test('hook mantém filtros locais sobre o resultado atual e ignora erro de carga antiga', async t => {
+  const pendentes = []
+  const { hook } = await montarCatalogoB3(t, signal => new Promise((resolve, reject) => pendentes.push({ signal, resolve, reject })))
+  hook.atual.tentarNovamente()
+  await hook.flush()
+  pendentes[1].resolve([espaco(2, { recursos: [recurso({ id_espaco: 2 })] })])
+  await hook.flush()
+  assert.equal(catalogo.filtrarEspacos(hook.atual.estado.espacos, { busca: '3D', bloco: '', capacidade: '', recurso: '' }).length, 1)
+  pendentes[0].reject(new http.ErroHttp('http', 'antigo', 401))
+  await hook.flush()
+  assert.equal(hook.atual.estado.tipo, 'pronto')
+})
+test('hook falha de rede permite retry sem redirecionar ou limpar sessão', async t => {
+  let chamadas = 0
+  const { hook, navegacoes } = await montarCatalogoB3(t, async () => {
+    if (++chamadas === 1) throw new http.ErroHttp('rede', 'Offline')
+    return []
+  })
+  await hook.flush()
+  assert.equal(hook.atual.estado.tipo, 'erro')
+  assert.equal(navegacoes.length, 0)
+  assert.equal(auth.obterTokenAcesso(), 'token-teste')
+  hook.atual.tentarNovamente()
+  await hook.flush()
+  assert.equal(hook.atual.estado.tipo, 'pronto')
+})
+test('hook só redireciona 401 definitivo e preserva destino com query', async t => {
+  const { hook, navegacoes } = await montarCatalogoB3(t, async () => { storage.delete('labagenda.access_token'); throw new http.ErroHttp('http', 'inválida', 401) }, '?bloco=A')
+  await hook.flush()
+  assert.equal(navegacoes.length, 1)
+  assert.equal(navegacoes[0].opcoes.state.destino, '/?bloco=A')
+})
+test('hook não publica dados após logout ou desmontagem', async t => {
+  let liberar
+  const { hook, navegacoes } = await montarCatalogoB3(t, () => new Promise(resolve => { liberar = resolve }))
+  storage.delete('labagenda.access_token')
+  liberar([espaco()])
+  await hook.flush()
+  assert.notEqual(hook.atual.estado.tipo, 'pronto')
+  assert.equal(navegacoes.length, 1)
+  // Nova instância: resposta que ignora abort também não atualiza hook desmontado.
+  storage.set('labagenda.access_token', 'nova')
+  let liberarAntigo
+  const outro = await montarCatalogoB3(t, () => new Promise(resolve => { liberarAntigo = resolve }))
+  outro.hook.desmontar()
+  liberarAntigo([espaco()])
+  await outro.hook.flush()
+  assert.equal(outro.hook.atual.estado.tipo, 'carregando')
+})
+
+test('hook não redireciona sessão nova por 401 atrasado da sessão anterior', async t => {
+  const { hook, navegacoes } = await montarCatalogoB3(t, async () => {
+    storage.set('labagenda.access_token', 'sessao-nova')
+    throw new http.ErroHttp('http', 'antiga', 401)
+  })
+  await hook.flush()
+  assert.equal(navegacoes.length, 0)
+  assert.equal(hook.atual.estado.tipo, 'erro')
+  assert.equal(auth.obterTokenAcesso(), 'sessao-nova')
 })

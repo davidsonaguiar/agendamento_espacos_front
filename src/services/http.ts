@@ -19,6 +19,7 @@ export interface OpcoesHttp {
   body?: unknown
   headers?: HeadersInit
   signal?: AbortSignal
+  credentials?: RequestCredentials
   token?: string
 }
 
@@ -62,7 +63,7 @@ export async function requisitar<T = unknown>(
     throw new ErroHttp('configuracao', 'VITE_API_URL deve ser uma URL HTTP(S) absoluta e o caminho deve ser relativo à API.')
   }
 
-  const { method = 'GET', body, headers, signal, token } = opcoes
+  const { method = 'GET', body, headers, signal, token, credentials } = opcoes
   const cabecalhos = new Headers(headers)
   if (!cabecalhos.has('Accept')) cabecalhos.set('Accept', 'application/json')
   if (body !== undefined) cabecalhos.set('Content-Type', 'application/json')
@@ -73,7 +74,7 @@ export async function requisitar<T = unknown>(
   let texto: string
   try {
     signal?.throwIfAborted()
-    resposta = await fetch(url.href, { method, headers: cabecalhos, body: dados, signal })
+    resposta = await fetch(url.href, { method, headers: cabecalhos, body: dados, signal, credentials })
     texto = resposta.status === 204 || method === 'HEAD' ? '' : await resposta.text()
   } catch (erro) {
     // Mantém o cancelamento distinguível de falhas de conectividade.
