@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LabAgenda - Painel do Gestor</title>
+  <link rel="stylesheet" href="/src/admin/admin.css" />
+</head>
+<body>
+
+  <!-- Header Global -->
+  <header class="navbar">
+    <div class="logo">
+      <span class="logo-icon">L</span>
+      <h2>LabAgenda</h2>
+    </div>
+    
+    <nav class="nav-links">
+      <button class="nav-btn active" data-tab="approvals">Aprovações</button>
+      <button class="nav-btn" data-tab="agenda">Agenda</button>
+      <button class="nav-btn" data-tab="labs">Laboratórios</button>
+    </nav>
+
+    <div class="user-badge">
+      <span class="role-tag">GESTOR</span>
+      <div class="avatar">GM</div>
+    </div>
+  </header>
+
+  <!-- Conteúdo Principal -->
+  <main class="container">
+
+    <!-- ==================== TAB 1: FILA DE APROVAÇÃO ==================== -->
+    <section id="tab-approvals" class="tab-content active">
+      <div class="page-header">
+        <h1>Fila de aprovação</h1>
+        <p>Analise solicitações pendentes do seu laboratório ou consulte o histórico de decisões.</p>
+      </div>
+
+      <!-- Métricas -->
+      <div class="metrics-grid">
+        <div class="metric-card yellow">
+          <span class="metric-number" id="metric-pending">3</span>
+          <span class="metric-label">Pendentes</span>
+        </div>
+        <div class="metric-card green">
+          <span class="metric-number" id="metric-approved">14</span>
+          <span class="metric-label">Aprovadas hoje</span>
+        </div>
+        <div class="metric-card red">
+          <span class="metric-number" id="metric-conflicts">1</span>
+          <span class="metric-label">Conflitos detectados</span>
+        </div>
+        <div class="metric-card blue">
+          <span class="metric-number" id="metric-labs">4</span>
+          <span class="metric-label">Laboratórios</span>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros Avançada -->
+      <div class="filters-bar">
+        <div class="filter-group">
+          <label for="filter-lab">Laboratório</label>
+          <select id="filter-lab">
+            <option value="all">Todos os laboratórios</option>
+            <option value="Laboratório de Informática 1">Laboratório de Informática 1</option>
+            <option value="COLAB">COLAB</option>
+            <option value="Lab. Eletrônica">Lab. Eletrônica</option>
+            <option value="Lab. Redes">Lab. Redes</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="filter-date-preset">Período</label>
+          <select id="filter-date-preset">
+            <option value="all">Todas as datas</option>
+            <option value="today">Hoje</option>
+            <option value="7days-next">Próximos 7 dias</option>
+            <option value="7days-past">Últimos 7 dias (Histórico)</option>
+            <option value="30days-past">Últimos 30 dias (Histórico)</option>
+            <option value="custom">Intervalo personalizado...</option>
+          </select>
+        </div>
+
+        <!-- Intervalo Personalizado (Mostrado via JS) -->
+        <div class="filter-group custom-date-group" id="custom-date-range" style="display: none;">
+          <label>Intervalo de datas</label>
+          <div class="date-inputs">
+            <input type="date" id="filter-date-start" title="Data Inicial" />
+            <span>até</span>
+            <input type="date" id="filter-date-end" title="Data Final" />
+          </div>
+        </div>
+
+        <!-- Filtro de Finalidade (Restaurado) -->
+        <div class="filter-group">
+          <label for="filter-purpose">Finalidade</label>
+          <select id="filter-purpose">
+            <option value="all">Todas as finalidades</option>
+            <option value="Aula prática">Aula prática</option>
+            <option value="Projeto de Pesquisa">Projeto de Pesquisa</option>
+            <option value="Treinamento">Treinamento</option>
+            <option value="Extensão">Extensão</option>
+          </select>
+        </div>
+
+        <!-- Filtro de Status -->
+        <div class="filter-group">
+          <label for="filter-status">Status</label>
+          <select id="filter-status">
+            <option value="all">Todos os status</option>
+            <option value="Pendente">Pendentes</option>
+            <option value="Conflito de horário">Conflitos</option>
+            <option value="Aprovado">Aprovados</option>
+            <option value="Rejeitado">Rejeitados</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Container dos Cards de Agendamento -->
+      <div id="requests-container" class="requests-list"></div>
+    </section>
+
+    <!-- ==================== TAB 2: AGENDA MESTRE ==================== -->
+    <section id="tab-agenda" class="tab-content">
+      <div class="page-header">
+        <h1>Agenda mestre</h1>
+        <p>Visualize reservas por laboratório e identifique conflitos de horário rapidamente.</p>
+      </div>
+
+      <div class="agenda-controls">
+        <div class="filter-group">
+          <label for="agenda-lab-filter">Laboratório</label>
+          <select id="agenda-lab-filter">
+            <option value="all">Todos os laboratórios</option>
+            <option value="lab-1">Laboratório de Informática 1</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="agenda-period">Período</label>
+          <input type="text" id="agenda-period" value="05–11 de outubro de 2026" readonly />
+        </div>
+
+        <div class="view-toggle">
+          <button type="button" class="btn btn-toggle">Dia</button>
+          <button type="button" class="btn btn-toggle active">Semana</button>
+          <button type="button" class="btn btn-toggle">Mês</button>
+        </div>
+      </div>
+
+      <div class="agenda-grid-container">
+        <div class="agenda-grid">
+          <div class="grid-header corner-cell"></div>
+          <div class="grid-header">SEG 05</div>
+          <div class="grid-header">TER 06</div>
+          <div class="grid-header">QUA 07</div>
+          <div class="grid-header">QUI 08</div>
+          <div class="grid-header">SEX 09</div>
+          <div class="grid-header">SÁB 10</div>
+          <div class="grid-header">DOM 11</div>
+
+          <div class="time-cell">08:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+          <div class="time-cell">09:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+          <div class="time-cell">10:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+          <div class="time-cell">11:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+          <div class="time-cell">12:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+          <div class="time-cell">13:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+          <div class="time-cell">14:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+          <div class="time-cell">15:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+
+          <div class="event-card green" style="grid-column: 2; grid-row: 3 / span 1;">
+            <strong>Aula prática</strong>
+            <span>Lab. Informática 1</span>
+          </div>
+
+          <div class="event-card blue" style="grid-column: 3; grid-row: 4 / span 1;">
+            <strong>Pesquisa</strong>
+            <span>COLAB</span>
+          </div>
+
+          <div class="event-card green" style="grid-column: 6; grid-row: 4 / span 1;">
+            <strong>Extensão</strong>
+            <span>Lab. Eletrônica</span>
+          </div>
+
+          <div class="event-card conflict" style="grid-column: 6; grid-row: 5 / span 2;">
+            <strong>Aula prática</strong>
+            <small>Lab. Informática 1</small>
+            <hr />
+            <strong>Pesquisa</strong>
+            <small>Lab. Informática 1</small>
+          </div>
+
+          <div class="event-card yellow" style="grid-column: 5; grid-row: 6 / span 1;">
+            <strong>Treinamento</strong>
+            <span>Lab. Redes</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="conflict-alert-banner">
+        <span class="alert-icon">⚠️</span>
+        <span><strong>2 conflitos detectados em 09/10.</strong> Revise as reservas sobrepostas antes da aprovação.</span>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: GESTÃO DE LABORATÓRIOS ==================== -->
+    <section id="tab-labs" class="tab-content">
+      <div class="page-header">
+        <h1>Gestão de laboratórios</h1>
+        <p>Cadastre novos espaços e atualize dados, regras e responsáveis.</p>
+      </div>
+
+      <div class="labs-container">
+        <aside class="labs-sidebar">
+          <div class="sidebar-header">
+            <h3>Laboratórios</h3>
+            <button type="button" class="btn btn-blue-sm" id="btn-new-lab">+ Novo</button>
+          </div>
+          <div id="labs-list" class="labs-list"></div>
+        </aside>
+
+        <div class="lab-editor-card">
+          <div class="editor-header">
+            <h2>Editar laboratório</h2>
+            <span class="status-badge-active">● Ativo</span>
+          </div>
+
+          <form id="lab-form" class="editor-form">
+            <div class="image-upload-box">
+              <div class="upload-placeholder">
+                <span class="upload-icon">🖼️</span>
+                <span>Imagem do laboratório</span>
+              </div>
+              <div class="upload-info">
+                <p>Foto / Imagem</p>
+                <button type="button" class="btn btn-suggest">Alterar imagem</button>
+                <small>PNG ou JPG · até 5 MB</small>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="lab-name">Nome do Lab</label>
+                <input type="text" id="lab-name" required />
+              </div>
+              <div class="form-group">
+                <label for="lab-capacity">Capacidade Máxima</label>
+                <input type="text" id="lab-capacity" required />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="lab-location">Bloco / Sala</label>
+                <input type="text" id="lab-location" required />
+              </div>
+              <div class="form-group">
+                <label for="lab-hours">Horários de Funcionamento</label>
+                <input type="text" id="lab-hours" required />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="lab-rules">Regras de Uso</label>
+              <textarea id="lab-rules" rows="4"></textarea>
+            </div>
+
+            <div class="responsibles-section">
+              <label>Servidores Responsáveis</label>
+              <div id="responsibles-list" class="responsibles-list"></div>
+              <button type="button" class="btn btn-suggest" id="btn-add-responsible">+ Adicionar responsável</button>
+            </div>
+
+            <div class="editor-actions">
+              <button type="button" class="btn btn-suggest" id="btn-cancel-lab">Cancelar alterações</button>
+              <button type="submit" class="btn btn-save-lab">Salvar laboratório</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==================== MODAL 1: REJEITAR RESERVA ==================== -->
+  <div id="modal-reject" class="modal-overlay">
+    <div class="modal-card">
+      <h2>Rejeitar solicitação</h2>
+      <p class="modal-subtitle">Informe o motivo para que o solicitante receba a justificativa.</p>
+
+      <div id="reject-summary" class="summary-box gray"></div>
+
+      <div class="form-group">
+        <label for="reject-reason">Motivo da recusa</label>
+        <textarea id="reject-reason" rows="4" placeholder="Ex.: Horário indisponível devido a manutenção programada..."></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-suggest close-modal">Cancelar</button>
+        <button type="button" class="btn btn-reject-confirm" id="btn-confirm-reject">Confirmar rejeição</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 2: SUGERIR NOVO HORÁRIO ==================== -->
+  <div id="modal-suggest" class="modal-overlay">
+    <div class="modal-card">
+      <h2>Sugerir novo horário</h2>
+      <p class="modal-subtitle">Proponha uma alternativa para o solicitante confirmar.</p>
+
+      <div id="suggest-summary" class="summary-box yellow"></div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="new-date">Nova data</label>
+          <input type="text" id="new-date" placeholder="10/10/2026" />
+        </div>
+        <div class="form-group">
+          <label for="new-time">Novo horário</label>
+          <input type="text" id="new-time" placeholder="14:00–16:00" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="suggest-obs">Observação</label>
+        <textarea id="suggest-obs" rows="3" placeholder="Horário alternativo disponível"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-suggest close-modal">Cancelar</button>
+        <button type="button" class="btn btn-blue-confirm" id="btn-confirm-suggest">Enviar sugestão</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./admin.ts"></script>
+</body>
+</html>
