@@ -10,7 +10,7 @@ export function Cabecalho({ perfil = 'usuario' }: { perfil?: 'usuario' | 'gestor
           <span className="brand__mark" aria-hidden="true">L</span>
           <span className="brand__name">LabAgenda</span>
         </Link>
-        <nav className="site-nav" aria-label="Navegação principal">
+        <nav className={`site-nav${perfil === 'gestor' ? ' site-nav--gestor' : ''}`} aria-label="Navegação principal">
           <Link className={`site-nav__link${secaoLaboratorios ? ' site-nav__link--active' : ''}`} to="/" aria-current={pathname === '/' ? 'page' : secaoLaboratorios ? 'location' : undefined}>
             Laboratórios
           </Link>
@@ -19,6 +19,16 @@ export function Cabecalho({ perfil = 'usuario' }: { perfil?: 'usuario' | 'gestor
           <span className="user-avatar" aria-label={perfil === 'gestor' ? 'Perfil de gestor' : 'Perfil de usuário'} title={perfil === 'gestor' ? 'Gestor' : 'Perfil'}>
             {perfil === 'gestor' ? 'GM' : 'UE'}
           </span>
+          {perfil === 'gestor' && (
+            <button
+              type="button"
+              className="site-nav__logout"
+              disabled
+              title="O encerramento da sessão será habilitado após a integração do login."
+            >
+              Sair
+            </button>
+          )}
         </nav>
       </div>
     </header>
