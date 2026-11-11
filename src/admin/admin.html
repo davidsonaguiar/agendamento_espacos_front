@@ -40,19 +40,19 @@
       <!-- Métricas -->
       <div class="metrics-grid">
         <div class="metric-card yellow">
-          <span class="metric-number" id="metric-pending">3</span>
+          <span class="metric-number" id="metric-pending">0</span>
           <span class="metric-label">Pendentes</span>
         </div>
         <div class="metric-card green">
-          <span class="metric-number" id="metric-approved">14</span>
+          <span class="metric-number" id="metric-approved">0</span>
           <span class="metric-label">Aprovadas hoje</span>
         </div>
         <div class="metric-card red">
-          <span class="metric-number" id="metric-conflicts">1</span>
+          <span class="metric-number" id="metric-conflicts">0</span>
           <span class="metric-label">Conflitos detectados</span>
         </div>
         <div class="metric-card blue">
-          <span class="metric-number" id="metric-labs">4</span>
+          <span class="metric-number" id="metric-labs">0</span>
           <span class="metric-label">Laboratórios</span>
         </div>
       </div>
@@ -63,10 +63,6 @@
           <label for="filter-lab">Laboratório</label>
           <select id="filter-lab">
             <option value="all">Todos os laboratórios</option>
-            <option value="Laboratório de Informática 1">Laboratório de Informática 1</option>
-            <option value="COLAB">COLAB</option>
-            <option value="Lab. Eletrônica">Lab. Eletrônica</option>
-            <option value="Lab. Redes">Lab. Redes</option>
           </select>
         </div>
 
@@ -97,10 +93,6 @@
           <label for="filter-purpose">Finalidade</label>
           <select id="filter-purpose">
             <option value="all">Todas as finalidades</option>
-            <option value="Aula prática">Aula prática</option>
-            <option value="Projeto de Pesquisa">Projeto de Pesquisa</option>
-            <option value="Treinamento">Treinamento</option>
-            <option value="Extensão">Extensão</option>
           </select>
         </div>
 
@@ -128,95 +120,21 @@
         <p>Visualize reservas por laboratório e identifique conflitos de horário rapidamente.</p>
       </div>
 
-      <div class="agenda-controls">
-        <div class="filter-group">
-          <label for="agenda-lab-filter">Laboratório</label>
-          <select id="agenda-lab-filter">
-            <option value="all">Todos os laboratórios</option>
-            <option value="lab-1">Laboratório de Informática 1</option>
-          </select>
-        </div>
-
-        <div class="filter-group">
-          <label for="agenda-period">Período</label>
-          <input type="text" id="agenda-period" value="05–11 de outubro de 2026" readonly />
-        </div>
-
-        <div class="view-toggle">
-          <button type="button" class="btn btn-toggle">Dia</button>
-          <button type="button" class="btn btn-toggle active">Semana</button>
-          <button type="button" class="btn btn-toggle">Mês</button>
-        </div>
-      </div>
-
-      <div class="agenda-grid-container">
-        <div class="agenda-grid">
-          <div class="grid-header corner-cell"></div>
-          <div class="grid-header">SEG 05</div>
-          <div class="grid-header">TER 06</div>
-          <div class="grid-header">QUA 07</div>
-          <div class="grid-header">QUI 08</div>
-          <div class="grid-header">SEX 09</div>
-          <div class="grid-header">SÁB 10</div>
-          <div class="grid-header">DOM 11</div>
-
-          <div class="time-cell">08:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
-          <div class="time-cell">09:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
-          <div class="time-cell">10:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
-          <div class="time-cell">11:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
-          <div class="time-cell">12:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
-          <div class="time-cell">13:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
-          <div class="time-cell">14:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
-          <div class="time-cell">15:00</div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
-
-          <div class="event-card green" style="grid-column: 2; grid-row: 3 / span 1;">
-            <strong>Aula prática</strong>
-            <span>Lab. Informática 1</span>
-          </div>
-
-          <div class="event-card blue" style="grid-column: 3; grid-row: 4 / span 1;">
-            <strong>Pesquisa</strong>
-            <span>COLAB</span>
-          </div>
-
-          <div class="event-card green" style="grid-column: 6; grid-row: 4 / span 1;">
-            <strong>Extensão</strong>
-            <span>Lab. Eletrônica</span>
-          </div>
-
-          <div class="event-card conflict" style="grid-column: 6; grid-row: 5 / span 2;">
-            <strong>Aula prática</strong>
-            <small>Lab. Informática 1</small>
-            <hr />
-            <strong>Pesquisa</strong>
-            <small>Lab. Informática 1</small>
-          </div>
-
-          <div class="event-card yellow" style="grid-column: 5; grid-row: 6 / span 1;">
-            <strong>Treinamento</strong>
-            <span>Lab. Redes</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="conflict-alert-banner">
-        <span class="alert-icon">⚠️</span>
-        <span><strong>2 conflitos detectados em 09/10.</strong> Revise as reservas sobrepostas antes da aprovação.</span>
-      </div>
+      <p class="empty-state">Nenhuma reserva carregada. A agenda será exibida após a integração com o backend.</p>
     </section>
 
     <!-- ==================== TAB 3: GESTÃO DE LABORATÓRIOS ==================== -->
     <section id="tab-labs" class="tab-content">
       <div class="page-header">
         <h1>Gestão de laboratórios</h1>
-        <p>Cadastre novos espaços e atualize dados, regras e responsáveis.</p>
+        <p>A edição dos espaços estará disponível após a integração com o backend.</p>
       </div>
 
       <div class="labs-container">
         <aside class="labs-sidebar">
           <div class="sidebar-header">
             <h3>Laboratórios</h3>
-            <button type="button" class="btn btn-blue-sm" id="btn-new-lab">+ Novo</button>
+            <button type="button" class="btn btn-blue-sm" id="btn-new-lab" disabled>+ Novo</button>
           </div>
           <div id="labs-list" class="labs-list"></div>
         </aside>
@@ -235,7 +153,7 @@
               </div>
               <div class="upload-info">
                 <p>Foto / Imagem</p>
-                <button type="button" class="btn btn-suggest">Alterar imagem</button>
+                <button type="button" class="btn btn-suggest" disabled>Alterar imagem</button>
                 <small>PNG ou JPG · até 5 MB</small>
               </div>
             </div>
@@ -315,11 +233,11 @@
       <div class="form-row">
         <div class="form-group">
           <label for="new-date">Nova data</label>
-          <input type="text" id="new-date" placeholder="10/10/2026" />
+          <input type="text" id="new-date" placeholder="DD/MM/AAAA" />
         </div>
         <div class="form-group">
           <label for="new-time">Novo horário</label>
-          <input type="text" id="new-time" placeholder="14:00–16:00" />
+          <input type="text" id="new-time" placeholder="HH:MM–HH:MM" />
         </div>
       </div>
 

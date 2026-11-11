@@ -1,10 +1,38 @@
-import { initialRequests, initialLabs } from './mokData';
-import type { BookingRequest, LabItem } from './mokData';
+type BookingStatus = 'Pendente' | 'Conflito de horário' | 'Aprovado' | 'Rejeitado';
+
+interface BookingRequest {
+  id: string;
+  userName: string;
+  userRole: 'Professora' | 'Aluno' | 'Servidora';
+  userInitials: string;
+  date: string;
+  timeSlot: string;
+  purpose: string;
+  participants: number;
+  status: BookingStatus;
+  labName: string;
+}
+
+interface Responsible {
+  id: string;
+  name: string;
+  email: string;
+}
+
+interface LabItem {
+  id: string;
+  name: string;
+  location: string;
+  capacity: string;
+  hours: string;
+  rules: string;
+  responsibles: Responsible[];
+}
 
 // ESTADO GLOBAL DA APLICAÇÃO
-let requests: BookingRequest[] = [...initialRequests];
-let labs: LabItem[] = [...initialLabs];
-let activeLabId: string = '1';
+let requests: BookingRequest[] = [];
+let labs: LabItem[] = [];
+let activeLabId: string | null = null;
 let selectedRequestId: string | null = null;
 
 // ELEMENTOS DO DOM
@@ -51,16 +79,18 @@ function parseInputDate(dateStr: string): Date | null {
 function renderRequests() {
   if (!requestsContainer) return;
 
-  const labFilter = (document.querySelector<HTMLSelectElement>('#filter-lab')?.value) || 'all';
-  const purposeFilter = (document.querySelector<HTMLSelectElement>('#filter-purpose')?.value) || 'all';
+  updateFilterOptions('#filter-lab', 'Todos os laboratórios', labs.map(lab => lab.name));
+  updateFilterOptions('#filter-purpose', 'Todas as finalidades', requests.map(req => req.purpose));
+
+  const labFilter = document.querySelector<HTMLSelectElement>('#filter-lab')?.value || 'all';
+  const purposeFilter = document.querySelector<HTMLSelectElement>('#filter-purpose')?.value || 'all';
   const statusFilter = (document.querySelector<HTMLSelectElement>('#filter-status')?.value) || 'all';
   const datePreset = datePresetSelect?.value || 'all';
 
   const startDateVal = (document.querySelector<HTMLInputElement>('#filter-date-start')?.value) || '';
   const endDateVal = (document.querySelector<HTMLInputElement>('#filter-date-end')?.value) || '';
 
-  // Data de referência do protótipo (09/10/2026)
-  const baseToday = new Date(2026, 9, 9);
+  const baseToday = new Date();
   baseToday.setHours(0, 0, 0, 0);
 
   const filtered = requests.filter(req => {
@@ -107,7 +137,10 @@ function renderRequests() {
   });
 
   if (filtered.length === 0) {
-    requestsContainer.innerHTML = '<p style="text-align:center; color:#64748b; padding:30px;">Nenhum agendamento encontrado para os filtros selecionados.</p>';
+    const message = requests.length === 0
+      ? 'Nenhuma solicitação carregada. Os dados serão exibidos após a integração com o backend.'
+      : 'Nenhuma solicitação encontrada para os filtros selecionados.';
+    requestsContainer.innerHTML = `<p class="empty-state">${message}</p>`;
     updateMetrics();
     return;
   }
@@ -161,6 +194,18 @@ function renderRequests() {
   updateMetrics();
 }
 
+function updateFilterOptions(selector: string, allLabel: string, values: string[]) {
+  const select = document.querySelector<HTMLSelectElement>(selector);
+  if (!select) return;
+
+  const selectedValue = select.value;
+  select.replaceChildren(
+    new Option(allLabel, 'all'),
+    ...[...new Set(values)].map(value => new Option(value, value))
+  );
+  if (values.includes(selectedValue)) select.value = selectedValue;
+}
+
 function attachRequestEvents() {
   document.querySelectorAll<HTMLButtonElement>('.btn-approve').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -205,15 +250,17 @@ function attachRequestEvents() {
 function updateMetrics() {
   const pendingCount = requests.filter(r => r.status === 'Pendente').length;
   const conflictCount = requests.filter(r => r.status === 'Conflito de horário').length;
-  const approvedCount = requests.filter(r => r.status === 'Aprovado').length + 13;
+  const approvedCount = requests.filter(r => r.status === 'Aprovado').length;
 
   const elPending = document.querySelector('#metric-pending');
   const elConflicts = document.querySelector('#metric-conflicts');
   const elApproved = document.querySelector('#metric-approved');
+  const elLabs = document.querySelector('#metric-labs');
 
   if (elPending) elPending.textContent = pendingCount.toString();
   if (elConflicts) elConflicts.textContent = conflictCount.toString();
   if (elApproved) elApproved.textContent = approvedCount.toString();
+  if (elLabs) elLabs.textContent = labs.length.toString();
 }
 
 // --- 3. MODAIS DE AÇÃO ---
@@ -257,16 +304,25 @@ function renderLabsSidebar() {
   const labsListContainer = document.querySelector<HTMLDivElement>('#labs-list');
   if (!labsListContainer) return;
 
-  labsListContainer.innerHTML = labs.map(lab => `
+  if (!activeLabId && labs.length > 0) activeLabId = labs[0].id;
+  labsListContainer.innerHTML = labs.length === 0
+    ? '<p class="empty-state">Nenhum laboratório carregado. Os dados serão exibidos após a integração com o backend.</p>'
+    : labs.map(lab => `
     <div class="lab-item ${lab.id === activeLabId ? 'active' : ''}" data-lab-id="${lab.id}">
       <span class="lab-item-name">${lab.name}</span>
       <span class="lab-item-sub">${lab.location}</span>
     </div>
   `).join('');
 
+  const newLabButton = document.querySelector<HTMLButtonElement>('#btn-new-lab');
+  if (newLabButton) newLabButton.disabled = true;
+  const labForm = document.querySelector<HTMLFormElement>('#lab-form');
+  labForm?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>('input, textarea, button')
+    .forEach(element => { element.disabled = true; });
+
   document.querySelectorAll<HTMLDivElement>('.lab-item').forEach(item => {
     item.addEventListener('click', () => {
-      activeLabId = item.getAttribute('data-lab-id') || '1';
+      activeLabId = item.getAttribute('data-lab-id');
       renderLabsSidebar();
       loadLabForm();
     });
@@ -291,7 +347,7 @@ function renderResponsibles(lab: LabItem) {
   if (!responsiblesContainer) return;
 
   if (lab.responsibles.length === 0) {
-    responsiblesContainer.innerHTML = '<p style="font-size:12px; color:#64748b;">Nenhum responsável cadastrado.</p>';
+    responsiblesContainer.innerHTML = '<p class="empty-state">Nenhum responsável cadastrado.</p>';
     return;
   }
 
@@ -326,23 +382,6 @@ function setupLabEvents() {
       currentLab.responsibles.push({ id: Date.now().toString(), name, email });
       renderResponsibles(currentLab);
     }
-  });
-
-  document.querySelector('#btn-new-lab')?.addEventListener('click', () => {
-    const newId = (labs.length + 1).toString();
-    const newLab: LabItem = {
-      id: newId,
-      name: `Novo Lab ${newId}`,
-      location: 'Bloco A · Sala 000',
-      capacity: '20 pessoas',
-      hours: 'Seg-Sex, 08h às 18h',
-      rules: '• Inserir regras...',
-      responsibles: []
-    };
-    labs.push(newLab);
-    activeLabId = newId;
-    renderLabsSidebar();
-    loadLabForm();
   });
 
   document.querySelector('#lab-form')?.addEventListener('submit', (e) => {
