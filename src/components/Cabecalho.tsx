@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation } from 'react-router-dom'
 
-export function Cabecalho() {
+export function Cabecalho({ perfil = 'usuario' }: { perfil?: 'usuario' | 'gestor' }) {
   const { pathname } = useLocation()
   const secaoLaboratorios = pathname === '/' || pathname.startsWith('/laboratorios/')
   return (
@@ -15,7 +15,10 @@ export function Cabecalho() {
             Laboratórios
           </Link>
           <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' site-nav__link--active' : ''}`} to="/meus-agendamentos">Agendamentos</NavLink>
-          <span className="user-avatar" aria-label="Perfil de usuário" title="Perfil">UE</span>
+          <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' site-nav__link--active' : ''}`} to="/admin">Painel do gestor</NavLink>
+          <span className="user-avatar" aria-label={perfil === 'gestor' ? 'Perfil de gestor' : 'Perfil de usuário'} title={perfil === 'gestor' ? 'Gestor' : 'Perfil'}>
+            {perfil === 'gestor' ? 'GM' : 'UE'}
+          </span>
         </nav>
       </div>
     </header>
