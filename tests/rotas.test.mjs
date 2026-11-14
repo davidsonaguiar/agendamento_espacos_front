@@ -113,7 +113,7 @@ async function executarHooksB3(caminho, nome, modulos) {
 async function montarGuardB3(t, verificar) {
   const local = { pathname: '/laboratorios/77', search: '?origem=catalogo' }
   const guard = await executarHooksB3('../src/components/RotaProtegida.tsx', 'RotaProtegida', {
-    'react-router-dom': { useLocation: () => local, Navigate: function Navigate() {}, Outlet: function Outlet() {} },
+    'react-router-dom': { Link: () => null, useLocation: () => local, Navigate: function Navigate() {}, Outlet: function Outlet() {} },
     '../services/autenticacao': { verificarSessao: verificar, obterTokenAcesso: () => 'token', obterExpiracaoToken: () => Date.now() + 90_000 },
   })
   t.after(() => guard.desmontar())
@@ -321,3 +321,11 @@ for (const falha of [false, true]) {
     if (falha) assert.match(navegacoes[0].opcoes.state.aviso, /Não foi possível confirmar/)
   })
 }
+
+
+test('/admin possui guard dedicado que exige Administrador', () => {
+  const matches = matchRoutes(rotas, '/admin')
+  assert.equal(matches[0].route.element.type.name, 'RotaProtegida')
+  assert.equal(matches[0].route.element.props.somenteAdministrador, true)
+  assert.equal(matches[1].route.element.type.name, 'PainelAdmin')
+})

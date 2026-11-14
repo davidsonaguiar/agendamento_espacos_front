@@ -1,4 +1,4 @@
-﻿import './styles/logout.css'
+import './styles/logout.css'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { MeusAgendamentos } from './pages/MeusAgendamentos'
 import { CatalogoLaboratorios } from './pages/CatalogoLaboratorios'
@@ -7,6 +7,7 @@ import { Login } from './pages/Login'
 import { CadastroServidor } from './pages/CadastroServidor'
 import { RecuperarSenha } from './pages/RecuperarSenha'
 import { RotaProtegida } from './components/RotaProtegida'
+import { PainelAdmin } from './pages/PainelAdmin'
 
 function RotaDetalhesLaboratorio() {
   const { id } = useParams()
@@ -32,6 +33,9 @@ function App() {
         <Route path="/laboratorios/:id/agendamento" element={<RotaSolicitacaoAgendamento />} />
         <Route path="/laboratorios/:id/agendamento/detalhes" element={<RotaSolicitacaoAgendamento />} />
         <Route path="/meus-agendamentos" element={<MeusAgendamentos />} />
+      </Route>
+      <Route element={<RotaProtegida somenteAdministrador />}>
+        <Route path="/admin" element={<PainelAdmin />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

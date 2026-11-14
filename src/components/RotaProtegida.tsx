@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { obterExpiracaoToken, obterTokenAcesso, verificarSessao } from '../services/autenticacao'
 
-type EstadoSessao = 'verificando' | 'autorizado' | 'sem-sessao' | 'indisponivel'
+type EstadoSessao = 'verificando' | 'autorizado' | 'sem-sessao' | 'sem-permissao' | 'indisponivel'
 
-export function RotaProtegida() {
+export function RotaProtegida({ somenteAdministrador = false }: { somenteAdministrador?: boolean } = {}) {
   const location = useLocation()
   const [estado, setEstado] = useState<EstadoSessao>('verificando')
   const [tentativa, setTentativa] = useState(0)
@@ -26,7 +26,7 @@ export function RotaProtegida() {
           setEstado('sem-sessao')
           return
         }
-        setEstado('autorizado')
+        setEstado(somenteAdministrador && usuario.perfil !== 'Administrador' ? 'sem-permissao' : 'autorizado')
         const expiracao = obterExpiracaoToken(obterTokenAcesso())
         if (expiracao !== null) {
           // Renova antes do vencimento, evitando expirar durante uma página aberta.
@@ -48,13 +48,20 @@ export function RotaProtegida() {
       window.removeEventListener('focus', aoFocar)
       if (temporizador !== undefined) clearTimeout(temporizador)
     }
-  }, [location.pathname, tentativa])
+  }, [location.pathname, tentativa, somenteAdministrador])
 
   if (estado === 'verificando') {
     return <main className="access-feedback" role="status">Verificando sua sessão...</main>
   }
   if (estado === 'sem-sessao') {
     return <Navigate to="/login" replace state={{ aviso: 'Faça login para acessar o sistema.', destino: location.pathname + location.search }} />
+  }
+  if (estado === 'sem-permissao') {
+    return <main className="access-feedback" role="alert">
+      <h1>Acesso restrito</h1>
+      <p>O painel visual está disponível somente para administradores nesta etapa.</p>
+      <Link to="/">Voltar ao catálogo</Link>
+    </main>
   }
   if (estado === 'indisponivel') {
     return <main className="access-feedback" role="alert">

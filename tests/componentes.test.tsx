@@ -11,12 +11,14 @@ const espacosTeste = [{ id: 77, nome: 'Laboratório API 77', descricao: null, ca
   recursos: [{ id: 501, nome: 'Impressora 3D', tipo: 'Equipamento', autorizacao_necessaria: true, disponibilidade: false, reserva_independente: true, id_espaco: 77 }],
   horarios_funcionamento: [], pausas_funcionamento: [], usuarios_vinculados: [] }]
 let espacosResposta: unknown = espacosTeste
+let usuarioResposta = usuario
 let autenticado = false
 let chamadas: { url: string; body: unknown }[] = []
 
 beforeEach(() => {
   sessionStorage.clear()
   autenticado = false
+  usuarioResposta = usuario
   espacosResposta = espacosTeste
   chamadas = []
   globalThis.fetch = async (input, options) => {
@@ -30,15 +32,15 @@ beforeEach(() => {
       assert.match(new Headers(options?.headers).get('Authorization') ?? '', /^Bearer /)
       return Response.json(espacosResposta)
     }
-    if (url.endsWith('/me')) return Response.json(usuario)
-    if (url.endsWith('/login') || url.endsWith('/refresh')) return Response.json({ access_token: jwt(), token_type: 'bearer', usuario })
+    if (url.endsWith('/me')) return Response.json(usuarioResposta)
+    if (url.endsWith('/login') || url.endsWith('/refresh')) return Response.json({ access_token: jwt(), token_type: 'bearer', usuario: usuarioResposta })
     throw Error('Requisição inesperada no teste: ' + url)
   }
 })
 afterEach(cleanup)
 const abrir = (caminho: string) => render(<MemoryRouter initialEntries={[caminho]}><App /></MemoryRouter>)
 
-for (const caminho of ['/', '/laboratorios/1', '/laboratorios/1/agendamento', '/laboratorios/1/agendamento/detalhes', '/meus-agendamentos']) {
+for (const caminho of ['/', '/laboratorios/1', '/laboratorios/1/agendamento', '/laboratorios/1/agendamento/detalhes', '/meus-agendamentos', '/admin']) {
   test(`protege rota ${caminho} sem sessão`, async () => {
     abrir(caminho)
     await screen.findByText('Faça login para acessar o sistema.')
@@ -170,4 +172,32 @@ test('resposta inválida do catálogo mostra erro e permite nova tentativa', asy
   espacosResposta = espacosTeste
   await userEvent.setup().click(screen.getByRole('button', { name: 'Tentar novamente' }))
   await screen.findByRole('heading', { name: 'Laboratório API 77' })
+})
+
+
+test('painel bloqueia Membro mesmo com Administrador adulterado no armazenamento local', async () => {
+  autenticado = true
+  sessionStorage.setItem('labagenda.access_token', jwt())
+  sessionStorage.setItem('labagenda.usuario', JSON.stringify({ ...usuario, perfil: 'Administrador' }))
+  abrir('/admin')
+  await screen.findByRole('heading', { name: 'Acesso restrito' })
+  assert.equal(screen.queryByRole('heading', { name: 'Painel do gestor' }), null)
+  assert.ok(chamadas.some(c => c.url.endsWith('/me')))
+  assert.equal(chamadas.some(c => /\/(solicitacoes|agendamentos|espacos)/.test(new URL(c.url).pathname)), false)
+})
+
+test('Administrador abre painel visual, alterna abas e mantém logout real sem API administrativa', async () => {
+  autenticado = true
+  usuarioResposta = { ...usuario, perfil: 'Administrador' }
+  abrir('/admin')
+  await screen.findByRole('heading', { name: 'Painel do gestor' })
+  assert.ok(screen.getByText(/Nenhuma.*registrada/))
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('tab', { name: /^Agenda$/ }))
+  assert.ok(screen.getByRole('heading', { name: 'Agenda mestre' }))
+  assert.equal(chamadas.some(c => /\/(solicitacoes|agendamentos|espacos)/.test(new URL(c.url).pathname)), false)
+  await user.click(screen.getByRole('button', { name: 'Sair' }))
+  await screen.findByText('Sessão encerrada.')
+  assert.equal(chamadas.filter(c => c.url.endsWith('/logout')).length, 1)
+  assert.equal(sessionStorage.getItem('labagenda.access_token'), null)
 })
