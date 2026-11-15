@@ -139,7 +139,7 @@ test('detalhe usa ID real e calendário permanece bloqueado sem horários fictí
   abrir('/')
   await user.click(await screen.findByRole('link', { name: 'Ver laboratório' }))
   await screen.findByRole('heading', { name: 'Laboratório API 77' })
-  assert.ok(screen.getByRole('heading', { name: 'Detalhes do laboratório' }))
+  assert.equal(screen.getByRole('heading', { name: 'Laboratório API 77' }).tagName, 'H1')
   await user.click(screen.getByRole('link', { name: 'Consultar situação do agendamento' }))
   await screen.findByRole('heading', { name: 'Agendamento ainda não integrado' })
   assert.equal(screen.queryByText(/09:00/), null)
@@ -200,4 +200,75 @@ test('Administrador abre painel visual, alterna abas e mantém logout real sem A
   await screen.findByText('Sessão encerrada.')
   assert.equal(chamadas.filter(c => c.url.endsWith('/logout')).length, 1)
   assert.equal(sessionStorage.getItem('labagenda.access_token'), null)
+})
+
+
+test('detalhes exibem dados e horários reais sem transformar funcionamento em disponibilidade', async () => {
+  autenticado = true
+  espacosResposta = [{ ...espacosTeste[0], descricao: 'Descrição oficial da API', capacidade: 0, disponibilidade: false,
+    horarios_funcionamento: [
+      { id: 2, dia_semana: 6, hora_abertura: '09:15:30', hora_fechamento: '12:30:00', ativo: false, id_espaco: 77 },
+      { id: 1, dia_semana: 0, hora_abertura: '08:00:00', hora_fechamento: '11:00:00', ativo: true, id_espaco: 77 },
+    ] }]
+  abrir('/laboratorios/77')
+  await screen.findByRole('heading', { name: 'Laboratório API 77' })
+  assert.ok(screen.getByText('Descrição oficial da API'))
+  assert.ok(screen.getByText('Bloco X'))
+  assert.ok(screen.getByText('0 pessoas'))
+  assert.ok(screen.getByText('Espaço indisponível'))
+  assert.ok(screen.getByText('Impressora 3D'))
+  assert.ok(screen.getByText(/Indisponível · Requer autorização/))
+  const horarios = screen.getByRole('region', { name: 'Horário de funcionamento' })
+  assert.deepEqual(Array.from(horarios.querySelectorAll('dt'), item => item.textContent), ['Domingo', 'Sábado'])
+  assert.ok(screen.getByText('08:00:00 — 11:00:00'))
+  assert.ok(screen.getByText('Inativo'))
+  assert.equal(screen.queryByText('Segunda'), null)
+  assert.equal(screen.queryByRole('button', { name: /Solicitar|Reservar/ }), null)
+  assert.ok(chamadas.every(c => c.body === null))
+})
+
+test('detalhes tratam campos nulos, textos vazios e listas ausentes sem dados demonstrativos', async () => {
+  autenticado = true
+  espacosResposta = [{ id: 77, nome: 'Espaço mínimo', descricao: '  ', bloco: null, capacidade: null, disponibilidade: true }]
+  abrir('/laboratorios/77')
+  await screen.findByRole('heading', { name: 'Espaço mínimo' })
+  for (const texto of ['Descrição não informada.', 'Localização não informada.', 'Capacidade não informada.', 'Nenhum recurso informado.', 'Horários de funcionamento não informados.']) {
+    assert.ok(screen.getByText(texto))
+  }
+  assert.equal(screen.queryByText(/08:00|18:00|COLAB/), null)
+  assert.equal(screen.queryByRole('button', { name: /Solicitar|Reservar/ }), null)
+})
+
+test('detalhes não resolvem um ID ausente usando fixtures', async () => {
+  autenticado = true
+  abrir('/laboratorios/1')
+  await screen.findByText('Laboratório não encontrado no catálogo acessível à sua conta.')
+  assert.equal(screen.queryByRole('heading', { name: 'Sobre o laboratório' }), null)
+  assert.ok(screen.getByRole('link', { name: 'Voltar ao catálogo' }))
+})
+
+test('detalhes preservam carregamento e recuperação de erro na consulta', async () => {
+  autenticado = true
+  const fetchValido = globalThis.fetch
+  let liberar: (() => void) | undefined
+  const espera = new Promise<void>(resolve => { liberar = resolve })
+  globalThis.fetch = async (input, options) => {
+    if (new URL(String(input)).pathname === '/espacos/') {
+      await espera
+      return Response.json({ detail: 'Falha temporária do catálogo' }, { status: 503 })
+    }
+    return fetchValido(input, options)
+  }
+  abrir('/laboratorios/77')
+  try {
+    await screen.findByText('Carregando laboratório...')
+  } finally {
+    liberar?.()
+  }
+  await screen.findByRole('alert')
+  assert.ok(screen.getByText('Falha temporária do catálogo'))
+  globalThis.fetch = fetchValido
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Tentar novamente' }))
+  await screen.findByRole('heading', { name: 'Laboratório API 77' })
+  assert.ok(screen.getByText('Horários de funcionamento não informados.'))
 })

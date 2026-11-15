@@ -55,7 +55,7 @@ test('mapeia dados reais e preserva nulos sem inventar atributos visuais', () =>
   const original = espaco(1, { recursos: [recurso()] })
   const resultado = catalogo.adaptarEspaco(servico.validarPaginaEspacos([original])[0])
   assert.deepEqual(resultado, { id: 1, nome: original.nome, descricao: null, capacidade: null,
-    bloco: null, disponivel: true, recursos: [recurso()] })
+    bloco: null, disponivel: true, recursos: [recurso()], horariosFuncionamento: [] })
   resultado.recursos[0].nome = 'Alterado'
   assert.equal(original.recursos[0].nome, 'Impressora 3D')
   for (const campo of ['sala', 'tema', 'tiposDeUso', 'horarios']) assert.equal(campo in resultado, false)
@@ -549,4 +549,16 @@ test('hook não redireciona sessão nova por 401 atrasado da sessão anterior', 
   assert.equal(navegacoes.length, 0)
   assert.equal(hook.atual.estado.tipo, 'erro')
   assert.equal(auth.obterTokenAcesso(), 'sessao-nova')
+})
+
+
+test('adaptador preserva horários reais e copia os registros sem alterar a resposta', () => {
+  const horario = { id: 9, dia_semana: 0, hora_abertura: '08:00:00', hora_fechamento: '12:30:00', ativo: true, id_espaco: 1 }
+  const original = espaco(1, { horarios_funcionamento: [horario] })
+  const resultado = catalogo.adaptarEspaco(servico.validarPaginaEspacos([original])[0])
+  assert.deepEqual(resultado.horariosFuncionamento, [horario])
+  resultado.horariosFuncionamento[0].hora_abertura = '09:00:00'
+  assert.equal(original.horarios_funcionamento[0].hora_abertura, '08:00:00')
+  delete original.horarios_funcionamento
+  assert.deepEqual(catalogo.adaptarEspaco(original).horariosFuncionamento, [])
 })

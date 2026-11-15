@@ -6,6 +6,7 @@ export function adaptarEspaco(espaco: EspacoResposta): EspacoCatalogo {
     capacidade: espaco.capacidade, bloco: espaco.bloco,
     disponivel: espaco.disponibilidade,
     recursos: (espaco.recursos ?? []).map(recurso => ({ ...recurso })),
+    horariosFuncionamento: (espaco.horarios_funcionamento ?? []).map(horario => ({ ...horario })),
   }
 }
 

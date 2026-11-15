@@ -49,4 +49,5 @@ export interface EspacoCatalogo {
   bloco: string | null
   disponivel: boolean
   recursos: RecursoResposta[]
+  horariosFuncionamento: HorarioFuncionamentoResposta[]
 }
