@@ -2,7 +2,9 @@ import './styles/logout.css'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { MeusAgendamentos } from './pages/MeusAgendamentos'
 import { CatalogoLaboratorios } from './pages/CatalogoLaboratorios'
-import { DetalhesEspacoIntegrado, AgendamentoIntegracaoPendente } from './pages/DetalhesEspacoIntegrado'
+import { DetalhesEspacoIntegrado } from './pages/DetalhesEspacoIntegrado'
+import { SolicitacaoAgendamento } from './pages/SolicitacaoAgendamento'
+import { DetalhesSolicitacao } from './pages/DetalhesSolicitacao'
 import { Login } from './pages/Login'
 import { CadastroServidor } from './pages/CadastroServidor'
 import { RecuperarSenha } from './pages/RecuperarSenha'
@@ -18,7 +20,13 @@ function RotaDetalhesLaboratorio() {
 function RotaSolicitacaoAgendamento() {
   const { id } = useParams()
   if (!id || !/^\d+$/.test(id)) return <Navigate to="/" replace />
-  return <AgendamentoIntegracaoPendente />
+  return <SolicitacaoAgendamento key={id} id={id} />
+}
+
+function RotaDetalhesSolicitacao() {
+  const { id } = useParams()
+  if (!id || !/^\d+$/.test(id)) return <Navigate to="/" replace />
+  return <DetalhesSolicitacao key={id} id={id} />
 }
 
 function App() {
@@ -31,7 +39,7 @@ function App() {
         <Route path="/" element={<CatalogoLaboratorios />} />
         <Route path="/laboratorios/:id" element={<RotaDetalhesLaboratorio />} />
         <Route path="/laboratorios/:id/agendamento" element={<RotaSolicitacaoAgendamento />} />
-        <Route path="/laboratorios/:id/agendamento/detalhes" element={<RotaSolicitacaoAgendamento />} />
+        <Route path="/laboratorios/:id/agendamento/detalhes" element={<RotaDetalhesSolicitacao />} />
         <Route path="/meus-agendamentos" element={<MeusAgendamentos />} />
       </Route>
       <Route element={<RotaProtegida somenteAdministrador />}>

@@ -177,8 +177,10 @@ test('grafo das telas integradas não importa fixtures nem serviços de reserva'
   }
   await visitar(new URL('../src/pages/CatalogoLaboratorios.tsx', import.meta.url))
   await visitar(new URL('../src/pages/DetalhesEspacoIntegrado.tsx', import.meta.url))
+  await visitar(new URL('../src/pages/SolicitacaoAgendamento.tsx', import.meta.url))
+  await visitar(new URL('../src/pages/DetalhesSolicitacao.tsx', import.meta.url))
   const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
-  assert.doesNotMatch(app, /from '.\/pages\/(DetalhesLaboratorio|SolicitacaoAgendamento|DetalhesSolicitacao)'/)
+  assert.doesNotMatch(app, /from '.\/pages\/DetalhesLaboratorio'/)
 })
 
 // Renderiza o JSX real com estados controlados do hook; não simula browser nem efeitos.
@@ -233,7 +235,7 @@ test('detalhe real não oferece horários ou formulário fictícios', async () =
   const html = await renderTela('../src/pages/DetalhesEspacoIntegrado.tsx', {
     tipo: 'pronto', espacos: [catalogo.adaptarEspaco(espaco())],
   }, { id: '1' })
-  assert.match(html, /ainda não estão integrados/)
+  assert.match(html, /envio de solicitações permanece bloqueado/)
   assert.doesNotMatch(html, /Próximos horários livres|09:00|Sala 201|Revisar solicitação/)
 })
 

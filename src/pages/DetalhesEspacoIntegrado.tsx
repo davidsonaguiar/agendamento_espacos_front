@@ -60,22 +60,13 @@ export function DetalhesEspacoIntegrado({ id }: { id: string }) {
               </> : <p>Horários de funcionamento não informados.</p>}
             </section>
             <section className="detail-card" aria-labelledby="detail-booking-title">
-              <h2 id="detail-booking-title">Agendamento ainda não integrado</h2>
-              <p>A consulta de disponibilidade e o envio de solicitações ainda não estão integrados. Nenhuma reserva pode ser criada nesta tela.</p>
-              <Link className="booking-back-link" to={`/laboratorios/${espaco.id}/agendamento`}>Consultar situação do agendamento</Link>
+              <h2 id="detail-booking-title">Consultar disponibilidade</h2>
+              <p>Consulte os horários disponíveis e prepare uma prévia. O envio de solicitações permanece bloqueado.</p>
+              <Link className="booking-back-link" to={`/laboratorios/${espaco.id}/agendamento`}>Consultar horários disponíveis</Link>
             </section>
           </div>
         </div>
       </>}
     <Link className="booking-back-link" to="/">Voltar ao catálogo</Link>
-  </main></>
-}
-
-/** Mantém URLs existentes, sem resolver IDs reais nas fixtures do protótipo. */
-export function AgendamentoIntegracaoPendente() {
-  return <><Cabecalho /><main className="page-shell">
-    <h1>Agendamento ainda não integrado</h1>
-    <p role="status">A disponibilidade e o envio de solicitações serão integrados em uma próxima etapa. Nenhuma reserva foi criada.</p>
-    <Link className="button button--primary" to="/">Voltar ao catálogo</Link>
   </main></>
 }

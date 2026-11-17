@@ -218,11 +218,12 @@ async function preencherLoginB4(tela) {
   await tela.flush()
 }
 
-test('rotas preservam catálogo real, detalhes por ID e bloqueio de agendamento', async () => {
+test('rotas preservam catálogo real, calendário e prévia protegidos por ID', async () => {
   const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
   assert.match(app, /return <DetalhesEspacoIntegrado id=\{id\} \/>/)
-  assert.match(app, /return <AgendamentoIntegracaoPendente \/>/)
-  assert.doesNotMatch(app, /from '.\/pages\/(DetalhesLaboratorio|SolicitacaoAgendamento|DetalhesSolicitacao)'/)
+  assert.match(app, /return <SolicitacaoAgendamento key=\{id\} id=\{id\} \/>/)
+  assert.match(app, /return <DetalhesSolicitacao key=\{id\} id=\{id\} \/>/)
+  assert.doesNotMatch(app, /from '.\/pages\/DetalhesLaboratorio'/)
   const guard = rotas.find(rota => rota.element?.type.name === 'RotaProtegida')
   assert.equal(guard.children.find(rota => rota.path === '/').element.type.name, 'CatalogoLaboratorios')
   assert.equal(guard.children.find(rota => rota.path === '/meus-agendamentos').element.type.name, 'MeusAgendamentos')
