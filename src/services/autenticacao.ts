@@ -128,7 +128,7 @@ export async function cadastrarMembro(dados: DadosCadastroMembro): Promise<Usuar
     method: 'POST',
     body: dados,
   })
-  if (!usuarioValido(usuario)) throw new ErroAutenticacao('O servidor respondeu com dados inesperados.')
+  if (!usuarioValido(usuario) || usuario.perfil !== 'Membro') throw new ErroAutenticacao('O servidor respondeu com dados inesperados.')
   return usuario
 }
 
@@ -244,7 +244,7 @@ async function conferirSessao(versao: number): Promise<UsuarioAutenticado | null
     if (versao !== versaoSessao) return null
     // Um access token revogado/expirado pode ser recuperado pelo cookie de refresh.
     if (erro instanceof ErroAutenticacao && erro.status === 401 && !renovou) {
-      // Outra chamada pode ter concluído o refresh enquanto /me estava em trânsito.
+      // Um /me antigo pode receber 401 depois de outro consumidor renovar.
       let tokenAtual = obterTokenAcesso()
       if (tokenAtual === token) tokenAtual = (await renovarSessao())?.access_token ?? null
       if (!tokenAtual) return null
@@ -286,3 +286,6 @@ export function desconectarUsuario(): Promise<void> {
   }).catch(() => undefined)
   return tarefa
 }
+
+/** @deprecated Alias temporário para a página existente; usa POST /usuarios/ e cria Membro. */
+export const cadastrarServidor = cadastrarMembro

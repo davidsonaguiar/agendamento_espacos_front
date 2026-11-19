@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { desconectarUsuario, obterUsuarioAutenticado } from '../services/autenticacao'
 
@@ -6,11 +6,16 @@ export function Cabecalho() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [saindo, setSaindo] = useState(false)
+  const logoutIniciado = useRef(false)
+  const montado = useRef(true)
+  useEffect(() => { montado.current = true; return () => { montado.current = false } }, [])
   const secaoLaboratorios = pathname === '/' || pathname.startsWith('/laboratorios/')
   const usuario = obterUsuarioAutenticado()
-  const iniciais = usuario?.nome_completo.split(/\s+/).filter(Boolean).slice(0, 2).map(nome => nome[0].toUpperCase()).join('') ?? 'US'
+  const iniciais = usuario?.nome_completo.split(/\s+/).filter(Boolean).slice(0, 2).map(nome => nome[0].toUpperCase()).join('') || 'US'
 
   async function sair() {
+    if (logoutIniciado.current) return
+    logoutIniciado.current = true
     setSaindo(true)
     let aviso = 'Sessão encerrada.'
     let logoutPendente = false
@@ -20,6 +25,7 @@ export function Cabecalho() {
       logoutPendente = true
       aviso = 'Dados locais removidos. Não foi possível confirmar o logout no servidor; tente novamente quando a conexão voltar.'
     } finally {
+      if (!montado.current) return
       setSaindo(false)
       navigate('/login', { replace: true, state: { aviso, logoutPendente } })
     }

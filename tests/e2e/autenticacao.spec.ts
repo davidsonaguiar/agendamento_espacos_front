@@ -4,13 +4,16 @@ const usuario = {
   id: 1, nome_completo: 'Ana Teste', cpf: '12345678901',
   vinculo_institucional: 'MAT123', email: 'ana@example.com', perfil: 'Membro', ativo: true,
 }
-const token = (agora: number, segundos = 900) => `a.${Buffer.from(JSON.stringify({ exp: Math.floor(agora / 1000) + segundos })).toString('base64url')}.c`
+const espacoApi = {
+  id: 77, nome: 'Laboratório API 77', descricao: 'Dados simulados para teste da integração', capacidade: 20, bloco: 'Bloco X', disponibilidade: true,
+  recursos: [{ id: 501, nome: 'Impressora 3D', tipo: 'Equipamento', autorizacao_necessaria: true, disponibilidade: false, reserva_independente: true, id_espaco: 77 }],
+  horarios_funcionamento: [], pausas_funcionamento: [], usuarios_vinculados: [],
+}
+const token = (segundos = 900, agora = Date.now()) => `a.${Buffer.from(JSON.stringify({ exp: Math.floor(agora / 1000) + segundos })).toString('base64url')}.c`
 
 async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInvalido?: boolean; logoutFalha?: boolean; expiraEm?: number } = {}) {
   let autenticado = opcoes.autenticado ?? false
   const chamadas: { caminho: string; corpo: unknown; authorization?: string }[] = []
-  // Na composição com o catálogo, o login também monta a consulta de espaços.
-  await page.route('**/espacos/?*', route => route.fulfill({ status: 200, json: [] }))
   await page.route('**/usuarios/**', async route => {
     const request = route.request()
     const caminho = new URL(request.url()).pathname
@@ -19,14 +22,14 @@ async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInva
     if (caminho === '/usuarios/login') {
       if (opcoes.loginInvalido) return json(401, { detail: 'Credenciais inválidas.' })
       autenticado = true
-      return json(200, { access_token: token(await page.evaluate(() => Date.now()), opcoes.expiraEm), token_type: 'bearer', usuario }, { 'set-cookie': 'refresh_token=simulado; HttpOnly; Path=/usuarios; SameSite=Lax' })
+      return json(200, { access_token: token(opcoes.expiraEm, await page.evaluate(() => Date.now())), token_type: 'bearer', usuario }, { 'set-cookie': 'refresh_token=simulado; HttpOnly; Path=/usuarios; SameSite=Lax' })
     }
     if (caminho === '/usuarios/refresh') return autenticado
-      ? json(200, { access_token: token(await page.evaluate(() => Date.now())), token_type: 'bearer', usuario })
+      ? json(200, { access_token: token(900, await page.evaluate(() => Date.now())), token_type: 'bearer', usuario })
       : json(401, { detail: 'Sessão expirada' })
-    if (caminho === '/usuarios/me') return autenticado ? json(200, usuario) : json(401, {})
     if (caminho === '/usuarios/recuperar-senha') return json(202, { detail: 'Instruções enviadas' })
     if (caminho === '/usuarios/redefinir-senha') return route.fulfill({ status: 204 })
+    if (caminho === '/usuarios/me') return autenticado ? json(200, usuario) : json(401, {})
     if (caminho === '/usuarios/') return json(201, usuario)
     if (caminho === '/usuarios/logout') {
       if (opcoes.logoutFalha) return route.abort('failed')
@@ -34,6 +37,23 @@ async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInva
       return route.fulfill({ status: 204, headers: { 'set-cookie': 'refresh_token=; Max-Age=0; Path=/usuarios; HttpOnly' } })
     }
     return json(404, {})
+  })
+  await page.route('**/espacos/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    chamadas.push({ caminho: url.pathname + url.search, corpo: null, authorization: request.headers().authorization })
+    if (!autenticado || !request.headers().authorization?.startsWith('Bearer ')) {
+      return route.fulfill({ status: 401, json: { detail: 'Sessão expirada' } })
+    }
+    return route.fulfill({ status: 200, json: Number(url.searchParams.get('skip')) === 0 ? [espacoApi] : [] })
+  })
+  await page.route('**/agendamentos/**', async route => {
+    expect(route.request().method()).toBe('GET')
+    return route.fulfill({ status: 200, json: [] })
+  })
+  await page.route('**/solicitacoes/**', async route => {
+    expect(route.request().method()).toBe('GET')
+    return route.fulfill({ status: autenticado ? 200 : 401, json: autenticado ? [] : { detail: 'Sessão expirada' } })
   })
   return chamadas
 }
@@ -160,6 +180,325 @@ test('indisponibilidade da API permite tentar novamente sem mostrar conteúdo pr
   await simularApi(page, { autenticado: true })
   await page.getByRole('button', { name: 'Tentar novamente', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Agendamentos', exact: true })).toBeVisible()
+})
+
+test('recuperação de senha informa quando API não oferece endpoint', async ({ page }) => {
+  await page.route('**/usuarios/recuperar-senha', route => route.fulfill({ status: 404, json: { detail: 'Not Found' } }))
+  await page.goto('/recuperar-senha')
+  await page.getByLabel('E-mail cadastrado').fill('membro@ifal.edu.br')
+  await page.getByRole('button', { name: 'Enviar link de recuperação' }).click()
+  await expect(page.getByRole('alert')).toContainText('ainda não está disponível nesta versão da API')
+})
+
+
+test('catálogo autenticado busca recurso sem apresentar fixture ou reserva independente', async ({ page }) => {
+  const chamadas = await simularApi(page, { autenticado: true })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Laboratório API 77' })).toBeVisible()
+  await page.getByRole('searchbox', { name: 'Buscar laboratório ou recurso' }).fill('IMPRESSORA 3D')
+  await expect(page.getByRole('heading', { name: 'Laboratório API 77' })).toBeVisible()
+  await expect(page.getByText(/Impressora 3D — Indisponível/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /Reservar equipamento/ })).toHaveCount(0)
+  expect(chamadas.find(c => c.caminho.startsWith('/espacos/'))?.authorization).toMatch(/^Bearer /)
+})
+
+test('login retorna a detalhes reais pelo ID e preserva query string interna', async ({ page }) => {
+  const chamadas = await simularApi(page)
+  await page.goto('/laboratorios/77?origem=catalogo')
+  await entrar(page)
+  await expect(page).toHaveURL(/\/laboratorios\/77\?origem=catalogo$/)
+  await expect(page.getByRole('heading', { name: 'Laboratório API 77', exact: true })).toBeVisible()
+  await expect(page.locator('.breadcrumb')).toContainText('Detalhes do laboratório')
+  await expect(page.getByText(espacoApi.descricao, { exact: true })).toBeVisible()
+  await expect(page.getByText('Bloco X', { exact: true })).toBeVisible()
+  await expect(page.getByText('20 pessoas', { exact: true })).toBeVisible()
+  await expect(page.getByText(/Impressora 3D.*Indisponível/)).toBeVisible()
+  await expect(page.getByText('Horários de funcionamento não informados.', { exact: true })).toBeVisible()
+  await expect(page.getByText('COLAB', { exact: true })).toHaveCount(0)
+  expect(chamadas.find(c => c.caminho.startsWith('/espacos/'))?.authorization).toMatch(/^Bearer /)
+  await page.getByRole('link', { name: 'Consultar horários disponíveis', exact: true }).click()
+  await expect(page).toHaveURL(/\/laboratorios\/77\/agendamento$/)
+  await expect(page.getByRole('heading', { name: 'Escolha a data e o horário' })).toBeVisible()
+  await expect(page.getByText('Nenhum horário disponível neste período.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Continuar para os detalhes' })).toBeDisabled()
+})
+
+test('calendário integrado consulta ID real, trata falha e vazio e navega até a prévia', async ({ page }) => {
+  await simularApi(page, { autenticado: true })
+  let falhar = true
+  let liberar!: () => void
+  const espera = new Promise<void>(resolve => { liberar = resolve })
+  const consultas: URL[] = []
+  await page.route('**/agendamentos/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    expect(request.method()).toBe('GET')
+    expect(url.pathname).toBe('/agendamentos/horarios-disponiveis')
+    expect(url.searchParams.get('id_espaco')).toBe('77')
+    expect(request.headers().authorization).toMatch(/^Bearer /)
+    consultas.push(url)
+    if (falhar) {
+      await espera
+      return route.fulfill({ status: 500, json: { detail: 'Disponibilidade indisponível no teste' } })
+    }
+    const data = '2090-01-07'
+    return route.fulfill({ status: 200, json: url.searchParams.get('data_inicio')! <= data && url.searchParams.get('data_fim')! >= data ? [
+      { data_hora_inicio: `${data}T08:00:00`, data_hora_fim: `${data}T09:00:00` },
+    ] : [] })
+  })
+  await page.goto('/laboratorios/77/agendamento?mes=2090-01')
+  await expect(page.getByText('Carregando disponibilidade...', { exact: true })).toBeVisible()
+  await expect.poll(() => consultas.length).toBeGreaterThan(0)
+  liberar()
+  await expect(page.getByRole('alert')).toContainText('Disponibilidade indisponível no teste')
+  await expect(page.getByRole('button', { name: 'Continuar para os detalhes' })).toBeDisabled()
+  falhar = false
+  await page.getByRole('button', { name: 'Tentar novamente', exact: true }).click()
+  const dia = page.getByRole('button', { name: /7 de janeiro de 2090: horários disponíveis/ })
+  await expect(dia).toBeEnabled()
+  expect(consultas.some(url => url.searchParams.get('data_inicio') === '2090-01-01' && url.searchParams.get('data_fim') === '2090-01-31')).toBe(true)
+  await expect(page.getByRole('button', { name: /, 8 de janeiro de 2090: sem horários disponíveis$/ })).toBeDisabled()
+  await page.getByRole('button', { name: 'Próximo mês' }).click()
+  await expect(page.getByText('Nenhum horário disponível neste período.', { exact: true })).toBeVisible()
+  expect(consultas.some(url => url.searchParams.get('data_inicio') === '2090-02-01' && url.searchParams.get('data_fim') === '2090-02-28')).toBe(true)
+  await page.getByRole('button', { name: 'Mês anterior' }).click()
+  await dia.click()
+  const slot = page.getByRole('button', { name: /08:00–09:00/ })
+  await slot.click()
+  await slot.click()
+  await expect(page.getByRole('region', { name: 'Resumo do intervalo' })).toContainText('2090-01-07 · 08:00–09:00')
+  await page.getByRole('button', { name: 'Continuar para os detalhes' }).click()
+  await expect(page).toHaveURL(/\/laboratorios\/77\/agendamento\/detalhes\?/)
+  const selecao = new URL(page.url()).searchParams
+  expect(selecao.get('data')).toBe('2090-01-07')
+  expect(selecao.get('inicio')).toBe('08:00:00')
+  expect(selecao.get('fim')).toBe('09:00:00')
+  await expect(page.getByRole('heading', { name: 'Resumo da seleção' })).toBeVisible()
+  expect(consultas.some(url => url.searchParams.get('data_inicio') === '2090-01-07' && url.searchParams.get('data_fim') === '2090-01-07')).toBe(true)
+  await expect(page.getByRole('button', { name: 'Enviar solicitação', exact: true })).toBeDisabled()
+})
+
+test('prévia integrada revalida seleção pela API e bloqueia intervalo inválido', async ({ page }) => {
+  await simularApi(page, { autenticado: true })
+  const consultas: URL[] = []
+  let escritas = 0
+  await page.route('**/solicitacoes/**', async route => {
+    if (route.request().method() !== 'GET') escritas++
+    await route.abort('blockedbyclient')
+  })
+  await page.route('**/agendamentos/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    expect(request.method()).toBe('GET')
+    expect(url.pathname).toBe('/agendamentos/horarios-disponiveis')
+    expect(url.searchParams.get('id_espaco')).toBe('77')
+    expect(request.headers().authorization).toMatch(/^Bearer /)
+    consultas.push(url)
+    return route.fulfill({ status: 200, json: [
+      { data_hora_inicio: '2090-01-07T08:00:00', data_hora_fim: '2090-01-07T09:00:00' },
+    ] })
+  })
+  const base = '/laboratorios/77/agendamento/detalhes'
+  await page.goto(base)
+  await expect(page.getByRole('heading', { name: 'Prévia da solicitação' })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('Seleção ausente ou inválida')
+  await expect(page.getByLabel('Finalidade da solicitação', { exact: true })).toHaveCount(0)
+  expect(consultas).toHaveLength(0)
+  await page.goto(`${base}?mes=2090-01&data=2090-01-07&inicio=08:00:00&fim=09:00:00`)
+  await expect(page.getByRole('heading', { name: 'Resumo da seleção' })).toBeVisible()
+  const resumo = page.locator('.booking-details-summary')
+  await expect(resumo).toContainText('Laboratório API 77')
+  await expect(resumo).toContainText('2090-01-07')
+  await expect(resumo).toContainText('08:00')
+  await expect(resumo).toContainText('09:00')
+  expect(consultas.some(url => url.searchParams.get('data_inicio') === '2090-01-07' && url.searchParams.get('data_fim') === '2090-01-07')).toBe(true)
+  await expect(page.getByLabel('Finalidade da solicitação', { exact: true })).toBeEditable()
+  await expect(page.getByRole('button', { name: 'Enviar solicitação', exact: true })).toBeDisabled()
+  await page.getByRole('link', { name: 'Voltar ao calendário' }).click()
+  const retorno = new URL(page.url())
+  expect(retorno.pathname).toBe('/laboratorios/77/agendamento')
+  expect(retorno.searchParams.get('data')).toBe('2090-01-07')
+  expect(retorno.searchParams.get('inicio')).toBe('08:00:00')
+  expect(retorno.searchParams.get('fim')).toBe('09:00:00')
+  await page.goto(`${base}?data=2090-01-07&inicio=08:00:00&fim=10:00:00`)
+  await expect(page.getByRole('alert')).toContainText('Seleção ausente ou inválida')
+  await expect(page.getByRole('heading', { name: 'Resumo da seleção' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Revisar solicitação' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Enviar solicitação', exact: true })).toHaveCount(0)
+  expect(consultas.length).toBeGreaterThanOrEqual(2)
+  expect(escritas).toBe(0)
+})
+
+test('catálogo recupera 401 com refresh e repete somente a página que falhou', async ({ page }) => {
+  await simularApi(page, { autenticado: true })
+  let rotacoes = 0
+  const tokens: string[] = []
+  await page.route('**/usuarios/refresh', async route => {
+    expect(route.request().method()).toBe('POST')
+    const access_token = token(900 + ++rotacoes, await page.evaluate(() => Date.now()))
+    tokens.push(access_token)
+    return route.fulfill({ status: 200, json: { access_token, token_type: 'bearer', usuario } })
+  })
+  const autorizacoes: string[] = []
+  const primeirasPaginasEntregues: number[] = []
+  page.on('response', response => {
+    const url = new URL(response.url())
+    if (url.pathname === '/espacos/' && url.searchParams.get('skip') === '0' && response.status() === 200) primeirasPaginasEntregues.push(0)
+  })
+  // StrictMode pode cancelar a primeira carga. O 401 ocorre na segunda página,
+  // alcançada apenas pela carga ativa; cancelamento inicial não conta como retry.
+  await page.route('**/espacos/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    expect(request.method()).toBe('GET')
+    expect(url.searchParams.get('limit')).toBe('100')
+    if (url.searchParams.get('skip') === '0') {
+      return route.fulfill({ status: 200, json: Array.from({ length: 100 }, (_, i) => ({ ...espacoApi, id: 1000 + i, nome: `Espaço paginado ${i}`, recursos: [] })) })
+    }
+    expect(url.searchParams.get('skip')).toBe('100')
+    autorizacoes.push(request.headers().authorization)
+    return route.fulfill(autorizacoes.length === 1
+      ? { status: 401, json: { detail: 'Access token expirado' } }
+      : { status: 200, json: [espacoApi] })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Laboratório API 77', exact: true })).toBeVisible()
+  expect(rotacoes).toBe(2)
+  expect(autorizacoes).toEqual([`Bearer ${tokens[0]}`, `Bearer ${tokens[1]}`])
+  expect(tokens[0]).not.toBe(tokens[1])
+  expect(primeirasPaginasEntregues).toHaveLength(1)
+})
+
+
+const consultaAgenda = (id = 3, autor = 1) => ({
+  id, finalidade: `Finalidade API ${id}`, urgencia: false, status: 'Pendente', decisao_justificativa: null,
+  id_projeto: null, id_solicitante: autor, id_espaco: 2, espaco_reservado: true,
+  espaco: { id: 2, nome: 'Sala de reuniões (seed)', descricao: null, capacidade: 12, bloco: null, disponibilidade: true },
+  projeto: null, solicitante: null, usuarios_envolvidos: [], ids_recursos: [], anexos: [], interacoes: [],
+  horarios: [{ id: 3, data_reserva: '2026-11-22', hora_inicio: '13:00:00.000001', hora_fim: '14:00:00.000002' }],
+})
+
+test('D5B lista própria real simulada filtra e atualiza sem criar solicitação', async ({ page }) => {
+  await simularApi(page, { autenticado: true })
+  let lista = [consultaAgenda(), consultaAgenda(4, 99)]
+  let leituras = 0
+  await page.route('**/solicitacoes/**', async route => {
+    expect(route.request().method()).toBe('GET')
+    expect(route.request().postData()).toBeNull()
+    leituras++
+    return route.fulfill({ status: 200, json: lista })
+  })
+  await page.goto('/meus-agendamentos')
+  await expect(page.getByText('Solicitação #3', { exact: true })).toBeVisible()
+  await expect(page.getByText('Finalidade API 4', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Duração: 1 h 0,000001 s', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Rejeitado', exact: true }).click()
+  await expect(page.getByText(/Nenhuma solicitação corresponde/)).toBeVisible()
+  await page.getByRole('button', { name: 'Todos', exact: true }).click()
+  lista = []
+  const antesDeAtualizar = leituras
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click()
+  await expect(page.getByText('Você ainda não possui solicitações.')).toBeVisible()
+  expect(leituras - antesDeAtualizar).toBe(1)
+})
+
+test('D5B troca de usuário limpa cartões no navegador sem polling', async ({ page }) => {
+  await simularApi(page, { autenticado: true })
+  await page.route('**/solicitacoes/**', async route => {
+    expect(route.request().method()).toBe('GET')
+    return route.fulfill({ status: 200, json: [consultaAgenda(), consultaAgenda(4, 99)] })
+  })
+  await page.goto('/meus-agendamentos')
+  await expect(page.getByText('Solicitação #3', { exact: true })).toBeVisible()
+  await page.evaluate(() => {
+    const salvo = JSON.parse(sessionStorage.getItem('labagenda.usuario')!)
+    sessionStorage.setItem('labagenda.usuario', JSON.stringify({ ...salvo, id: 99 }))
+  })
+  await expect(page.getByText('Solicitação #3', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Solicitação #4', { exact: true })).toBeVisible()
+  await page.evaluate(() => { sessionStorage.removeItem('labagenda.usuario'); sessionStorage.removeItem('labagenda.access_token') })
+  await expect(page.getByRole('article')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Entrar novamente' })).toBeVisible()
+})
+
+
+test.describe('D5C filtros e apresentação', () => {
+  test.use({ timezoneId: 'America/Sao_Paulo' })
+  async function prepararAgenda(page: Page) {
+    await simularApi(page, { autenticado: true })
+    await page.addInitScript(({ usuario, access }) => {
+      sessionStorage.setItem('labagenda.usuario', JSON.stringify(usuario))
+      sessionStorage.setItem('labagenda.access_token', access)
+    }, { usuario, access: token(315360000) })
+    let leituras = 0
+    await page.route('**/solicitacoes/**', async route => {
+      expect(route.request().method()).toBe('GET')
+      leituras++
+      return route.fulfill({ status: 200, json: [consultaAgenda(), { ...consultaAgenda(5), status: 'Rejeitado', horarios: [{ id: 5, data_reserva: '2026-11-19', hora_inicio: '00:00:00', hora_fim: '01:00:00' }] }] })
+    })
+    return () => leituras
+  }
+  test('controles rotulados, teclado e combinação de filtros sem nova consulta', async ({ page }) => {
+    const leituras = await prepararAgenda(page)
+    await page.goto('/meus-agendamentos')
+    await expect(page.getByText('Solicitação #3', { exact: true })).toBeVisible()
+    const antes = leituras()
+    await page.getByLabel('Período de utilização').selectOption('personalizado')
+    await expect(page.getByRole('alert')).toContainText('Informe a data inicial')
+    await expect(page.getByRole('article')).toHaveCount(0)
+    await page.getByLabel('Data inicial').fill('2026-11-23')
+    await page.getByLabel('Data final').fill('2026-11-22')
+    await expect(page.getByRole('alert')).toContainText('igual ou posterior')
+    await page.getByLabel('Data inicial').fill('2026-11-22')
+    await expect(page.getByRole('article')).toHaveCount(1)
+    await page.getByRole('button', { name: 'Rejeitado', exact: true }).click()
+    await expect(page.getByRole('article')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Todos', exact: true }).click()
+    await page.getByLabel('Período de utilização').focus()
+    await page.keyboard.press('Tab')
+    await expect(page.getByLabel('Ordenação')).toBeFocused()
+    expect(await page.getByLabel('Ordenação').evaluate(el => getComputedStyle(el).outlineStyle)).not.toBe('none')
+    expect(leituras()).toBe(antes)
+  })
+  test('virada do dia local em tela aberta recalcula Passados', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-11-20T02:59:59Z') })
+    const leituras = await prepararAgenda(page)
+    await page.goto('/meus-agendamentos')
+    await expect(page.getByText('Solicitação #5', { exact: true })).toBeVisible()
+    await page.getByLabel('Período de utilização').selectOption('passados')
+    await expect(page.getByRole('article')).toHaveCount(0)
+    const antes = leituras()
+    await page.clock.fastForward(2000)
+    await expect(page.getByText('Solicitação #5', { exact: true })).toBeVisible()
+    expect(leituras()).toBe(antes)
+  })
+  test('layout a 320, 375, 393 e 768px com controles personalizados e zoom 200%', async ({ page }) => {
+    await prepararAgenda(page)
+    await page.goto('/meus-agendamentos')
+    await expect(page.getByText('Solicitação #3', { exact: true })).toBeVisible()
+    await page.getByLabel('Período de utilização').selectOption('personalizado')
+    await page.getByLabel('Data inicial').fill('2026-11-22')
+    await page.getByLabel('Data final').fill('2026-11-22')
+    for (const largura of [320, 375, 393, 768]) {
+      await page.setViewportSize({ width: largura, height: 900 })
+      expect(await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) <= innerWidth + 1), `overflow a ${largura}px`).toBe(true)
+      const botao = await page.getByRole('button', { name: 'Atualizar', exact: true }).boundingBox()
+      expect(botao!.height).toBeGreaterThanOrEqual(44)
+      expect(botao!.width).toBeLessThan(160)
+      for (const nome of ['Período de utilização', 'Ordenação', 'Data inicial', 'Data final']) {
+        const box = await page.getByLabel(nome).boundingBox()
+        expect(box!.x).toBeGreaterThanOrEqual(0)
+        expect(box!.x + box!.width).toBeLessThanOrEqual(largura)
+      }
+      await page.screenshot({ path: `test-results/agenda-d5c-${largura}.png`, fullPage: true })
+    }
+    await page.evaluate(() => { document.documentElement.style.zoom = '2' })
+    await page.screenshot({ path: 'test-results/agenda-d5c-zoom-200.png', fullPage: true })
+    const transbordos = await page.evaluate(() => [...document.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > innerWidth + 1).slice(0, 8).map(el => `${el.tagName}.${el.className}`))
+    expect(await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) <= innerWidth + 1), `overflow com zoom CSS 200%: ${transbordos.join(', ')}`).toBe(true)
+    await expect(page.getByLabel('Data final')).toBeVisible()
+    await page.screenshot({ path: 'test-results/agenda-d5c-zoom-200.png', fullPage: true })
+  })
 })
 
 test('recuperação de senha solicita link e login cabe em tela móvel', async ({ page }) => {
