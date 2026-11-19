@@ -17,6 +17,7 @@ beforeEach(() => {
   globalThis.fetch = async (input, options) => {
     const url = String(input)
     chamadas.push({ url, body: options?.body ? JSON.parse(String(options.body)) : null })
+    if (new URL(url).pathname === '/espacos/') return Response.json([])
     if (url.endsWith('/login')) autenticado = true
     if (url.endsWith('/logout')) { autenticado = false; return new Response(null, { status: 204 }) }
     if (url.endsWith('/usuarios/')) return Response.json(usuario, { status: 201 })
@@ -86,9 +87,33 @@ test('indisponibilidade oculta agenda e permite tentar novamente', async () => {
   await screen.findByRole('heading', { name: 'Agendamentos', exact: true })
 })
 
-test('recuperação de senha apresenta limitação real', async () => {
+test('recuperação de senha solicita link sem revelar existência da conta', async () => {
+  const user = userEvent.setup()
+  globalThis.fetch = async (input, options) => {
+    chamadas.push({ url: String(input), body: options?.body ? JSON.parse(String(options.body)) : null })
+    return Response.json({ detail: 'Mensagem genérica' }, { status: 202 })
+  }
   abrir('/recuperar-senha')
-  assert.match(screen.getByRole('status').textContent ?? '', /ainda não está disponível/)
+  await user.type(screen.getByLabelText('E-mail cadastrado'), 'membro@ifal.edu.br')
+  await user.click(screen.getByRole('button', { name: 'Enviar link de recuperação' }))
+  await screen.findByText(/Se o e-mail estiver cadastrado e ativo/)
+  assert.equal(chamadas[0].url.endsWith('/usuarios/recuperar-senha'), true)
+  assert.deepEqual(chamadas[0].body, { email: 'membro@ifal.edu.br' })
+})
+
+test('link de redefinição aceita nova senha e volta ao login', async () => {
+  const user = userEvent.setup()
+  globalThis.fetch = async (input, options) => {
+    chamadas.push({ url: String(input), body: options?.body ? JSON.parse(String(options.body)) : null })
+    return new Response(null, { status: 204 })
+  }
+  abrir('/recuperar-senha?token=' + 't'.repeat(43))
+  await user.type(screen.getByLabelText('Nova senha (mínimo 8 caracteres)'), 'SenhaNova123!')
+  await user.type(screen.getByLabelText('Confirmar nova senha'), 'SenhaNova123!')
+  await user.click(screen.getByRole('button', { name: 'Salvar nova senha' }))
+  await screen.findByText('Senha redefinida com sucesso. Entre com a nova senha.')
+  assert.equal(chamadas[0].url.endsWith('/usuarios/redefinir-senha'), true)
+  assert.deepEqual(chamadas[0].body, { token: 't'.repeat(43), nova_senha: 'SenhaNova123!' })
 })
 
 test('logout offline exibe aviso e nova tentativa', async () => {

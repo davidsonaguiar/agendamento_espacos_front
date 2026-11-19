@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import '../styles/logout.css'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { desconectarUsuario, obterUsuarioAutenticado } from '../services/autenticacao'
 
