@@ -2,6 +2,7 @@ import type { RespostaLogin, UsuarioAutenticado, DadosCadastroMembro } from '../
 
 import { requisitar as requisitarHttp, ErroHttp } from './http'
 import type { OpcoesHttp } from './http'
+import { autenticarNoSimuladorLocal, simuladorLocalAtivo } from './simuladorLocal'
 
 const TOKEN_KEY = 'labagenda.access_token'
 const USUARIO_KEY = 'labagenda.usuario'
@@ -108,6 +109,14 @@ export async function autenticarUsuario(identificacao: string, senha: string): P
   await renovacaoEmAndamento?.catch(() => undefined)
   const versao = ++versaoSessao
   verificacaoEmAndamento = null
+  if (simuladorLocalAtivo) {
+    const dados = autenticarNoSimuladorLocal(identificacao, senha)
+    if (!dados) throw new ErroAutenticacao('E-mail ou senha inválidos no simulador local.', 401)
+    if (versao !== versaoSessao) throw new ErroAutenticacao('A sessão foi encerrada. Entre novamente.')
+    sessionStorage.removeItem(LOGOUT_KEY)
+    guardarSessao(dados)
+    return dados
+  }
   return comLockCookie(async () => {
     const dados = await requisitar<RespostaLogin>('/usuarios/login', {
       method: 'POST',
@@ -174,6 +183,12 @@ export function encerrarSessao(): void {
 
 /** Coalescência: dois componentes não devem girar o mesmo cookie de refresh em paralelo. */
 export function renovarSessao(): Promise<RespostaLogin | null> {
+  if (simuladorLocalAtivo) {
+    const usuario = obterUsuarioAutenticado()
+    const token = obterTokenAcesso()
+    if (!usuario || !token) return Promise.resolve(null)
+    return Promise.resolve({ access_token: token, token_type: 'bearer', usuario })
+  }
   if (sessionStorage.getItem(LOGOUT_KEY)) return Promise.resolve(null)
   if (renovacaoEmAndamento) return renovacaoEmAndamento
   const versao = versaoSessao
@@ -217,6 +232,9 @@ async function consultarUsuario(token: string, versao: number): Promise<UsuarioA
 }
 
 export function verificarSessao(): Promise<UsuarioAutenticado | null> {
+  if (simuladorLocalAtivo) {
+    return Promise.resolve(obterTokenAcesso() ? obterUsuarioAutenticado() : null)
+  }
   if (sessionStorage.getItem(LOGOUT_KEY)) return Promise.resolve(null)
   if (verificacaoEmAndamento) return verificacaoEmAndamento
   const tarefa = conferirSessao(versaoSessao)
@@ -269,6 +287,11 @@ async function conferirSessao(versao: number): Promise<UsuarioAutenticado | null
 
 /** Faz logout no backend (revogação da sessão) e limpa os dados locais mesmo se a rede falhar. */
 export function desconectarUsuario(): Promise<void> {
+  if (simuladorLocalAtivo) {
+    sessionStorage.removeItem(LOGOUT_KEY)
+    encerrarSessao()
+    return Promise.resolve()
+  }
   if (logoutEmAndamento) return logoutEmAndamento
   // Bloqueia restauração automática mesmo após recarregar, se a rede falhar.
   sessionStorage.setItem(LOGOUT_KEY, '1')

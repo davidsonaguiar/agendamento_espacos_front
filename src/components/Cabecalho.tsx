@@ -32,9 +32,12 @@ export function Cabecalho() {
           <span className="brand__mark" aria-hidden="true">L</span>
           <span className="brand__name">LabAgenda</span>
         </Link>
-        <nav className="site-nav" aria-label="Navegação principal">
+        <nav className={`site-nav${usuario?.perfil === 'Administrador' ? ' site-nav--admin' : ''}`} aria-label="Navegação principal">
           <Link className={`site-nav__link${secaoLaboratorios ? ' site-nav__link--active' : ''}`} to="/" aria-current={pathname === '/' ? 'page' : secaoLaboratorios ? 'location' : undefined}>Laboratórios</Link>
           <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' site-nav__link--active' : ''}`} to="/meus-agendamentos">Agendamentos</NavLink>
+          {usuario?.perfil === 'Administrador' && (
+            <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' site-nav__link--active' : ''}`} to="/admin">Painel do gestor</NavLink>
+          )}
           <span className="user-avatar" aria-label="Perfil de usuário" title={usuario?.nome_completo ?? 'Usuário'}>{iniciais}</span>
           <button type="button" className="site-nav__logout" onClick={() => { void sair() }} disabled={saindo}>{saindo ? 'Saindo...' : 'Sair'}</button>
         </nav>

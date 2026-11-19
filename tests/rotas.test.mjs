@@ -15,10 +15,10 @@ const codigo = resultado.code.replace(/from ["'](react-router-dom|react\/jsx-run
 const { default: App } = await import(`data:text/javascript;base64,${Buffer.from(codigo).toString('base64')}`)
 const rotas = createRoutesFromChildren(App().props.children)
 
-test('as cinco rotas pertencem ao mesmo guard RotaProtegida', () => {
+test('as cinco rotas de membro continuam no guard geral', () => {
   const guard = rotas.find(rota => rota.element?.type.name === 'RotaProtegida')
   assert.ok(guard)
-  assert.deepEqual(guard.children.map(rota => rota.path), [
+  assert.deepEqual(guard.children.filter(rota => rota.path).map(rota => rota.path), [
     '/', '/laboratorios/:id', '/laboratorios/:id/agendamento',
     '/laboratorios/:id/agendamento/detalhes', '/meus-agendamentos',
   ])
@@ -26,6 +26,17 @@ test('as cinco rotas pertencem ao mesmo guard RotaProtegida', () => {
     '/laboratorios/1/agendamento/detalhes', '/meus-agendamentos']) {
     assert.equal(matchRoutes(rotas, caminho)[0].route, guard)
   }
+})
+test('painel do gestor exige perfil de Administrador dentro do guard de sessão', () => {
+  const guard = rotas.find(rota => rota.element?.type.name === 'RotaProtegida')
+  const rotaPerfil = guard?.children.find(rota => rota.element?.type.name === 'RotaPerfil')
+  assert.ok(rotaPerfil)
+  assert.equal(rotaPerfil.element.props.perfil, 'Administrador')
+  assert.deepEqual(rotaPerfil.children.map(rota => rota.path), ['/admin'])
+  const correspondencias = matchRoutes(rotas, '/admin')
+  assert.equal(correspondencias?.[0].route, guard)
+  assert.equal(correspondencias?.[1].route, rotaPerfil)
+  assert.equal(correspondencias?.[2].route.path, '/admin')
 })
 test('login, cadastro e recuperação permanecem públicos', () => {
   for (const caminho of ['/login', '/cadastro', '/recuperar-senha']) {

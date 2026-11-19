@@ -3,6 +3,15 @@ import { intervaloEstaLivre, obterIntervalosDemonstrativos } from './horariosAge
 
 export const iso = (d: Date) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 
+export function obterEstadoDataDemonstrativa(id: number, data: Date, hoje = new Date()) {
+  const estado = obterEstadoDiaDemonstrativo(id, data, hoje)
+  if (estado !== 'livre') return estado
+
+  const intervalos = obterIntervalosDemonstrativos(id, iso(data))
+  if (!intervalos?.length) return 'sem-dados'
+  return intervalos.some(intervalo => intervalo.estado === 'livre') ? 'livre' : 'ocupado'
+}
+
 export function parseData(valor: string | null): Date | null {
   if (!valor || !/^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(valor)) return null
   const [ano, mes, dia] = valor.split('-').map(Number)
@@ -12,7 +21,7 @@ export function parseData(valor: string | null): Date | null {
 
 export function selecaoDemonstrativaValida(id: number, params: URLSearchParams): boolean {
   const data = parseData(params.get('data'))
-  return Boolean(data && obterEstadoDiaDemonstrativo(id, data) === 'livre'
+  return Boolean(data && obterEstadoDataDemonstrativa(id, data) === 'livre'
     && intervaloEstaLivre(obterIntervalosDemonstrativos(id, iso(data)), params.get('inicio') || '', params.get('fim') || ''))
 }
 

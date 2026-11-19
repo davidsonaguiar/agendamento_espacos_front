@@ -2,6 +2,8 @@
 import { Cabecalho } from '../components/Cabecalho'
 import { CartaoSolicitacao } from '../components/CartaoSolicitacao'
 import { minhaAgendaDemonstrativa } from '../data/minhaAgendaDemonstrativa'
+import { obterUsuarioAutenticado } from '../services/autenticacao'
+import { listarSolicitacoesSimuladas, simuladorLocalAtivo } from '../services/simuladorLocal'
 import type { SolicitacaoResposta, StatusSolicitacao } from '../types/solicitacao'
 
 type FiltroStatus = 'Todos' | StatusSolicitacao
@@ -35,7 +37,11 @@ function filtrarEOrdenarSolicitacoes(solicitacoes: readonly SolicitacaoResposta[
 
 export function MeusAgendamentos() {
   const [status, setStatus] = useState<FiltroStatus>('Todos')
-  const solicitacoes = filtrarEOrdenarSolicitacoes(minhaAgendaDemonstrativa, status)
+  const usuario = simuladorLocalAtivo ? obterUsuarioAutenticado() : null
+  const origem = simuladorLocalAtivo
+    ? listarSolicitacoesSimuladas(usuario?.id)
+    : minhaAgendaDemonstrativa
+  const solicitacoes = filtrarEOrdenarSolicitacoes(origem, status)
 
   // Carregamento e erro de API serão tratados na integração; aqui só há dados locais.
   return <>
@@ -45,7 +51,9 @@ export function MeusAgendamentos() {
         <h1>Agendamentos</h1>
         <p>Acompanhe as solicitações de utilização dos laboratórios.</p>
       </header>
-      <p className="agenda-notice" role="note">Registros demonstrativos e fictícios, sem consulta à API. Nenhuma solicitação foi enviada por esta página; os status apresentados não comprovam reservas confirmadas.</p>
+      <p className="agenda-notice" role="note">{simuladorLocalAtivo
+        ? 'Simulador local ativo: solicitações de teste ficam somente neste navegador e não são enviadas ao backend.'
+        : 'Registros demonstrativos e fictícios, sem consulta à API. Nenhuma solicitação foi enviada por esta página; os status apresentados não comprovam reservas confirmadas.'}</p>
       <fieldset className="agenda-filters" aria-controls="agenda-results">
         <legend>Filtrar por status</legend>
         <div className="agenda-filters__options">
@@ -59,12 +67,14 @@ export function MeusAgendamentos() {
         </div>
       </fieldset>
       <p className="agenda-results-count" role="status">{solicitacoes.length} {solicitacoes.length === 1 ? 'solicitação encontrada' : 'solicitações encontradas'}. Ordenação pela data do primeiro horário, crescente.</p>
-      <section id="agenda-results" aria-label="Solicitações demonstrativas">
+      <section id="agenda-results" aria-label={simuladorLocalAtivo ? 'Solicitações locais de teste' : 'Solicitações demonstrativas'}>
         {solicitacoes.length > 0 ? <ul className="agenda-list">
           {solicitacoes.map((solicitacao, indice) => <li key={solicitacao.id ?? `solicitacao-${indice}`}>
             <CartaoSolicitacao solicitacao={solicitacao} />
           </li>)}
-        </ul> : <p className="agenda-empty">Nenhuma solicitação corresponde ao filtro selecionado. Selecione “Todos” para voltar à listagem completa.</p>}
+        </ul> : <p className="agenda-empty">{simuladorLocalAtivo
+          ? 'Você ainda não enviou solicitações neste teste local.'
+          : 'Nenhuma solicitação corresponde ao filtro selecionado. Selecione “Todos” para voltar à listagem completa.'}</p>}
       </section>
     </main>
   </>

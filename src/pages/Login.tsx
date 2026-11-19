@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutAutenticacao } from '../components/LayoutAutenticacao'
 import { autenticarUsuario, desconectarUsuario } from '../services/autenticacao'
+import { simuladorLocalAtivo } from '../services/simuladorLocal'
 
 export function Login() {
   const navigate = useNavigate()
@@ -54,6 +55,10 @@ export function Login() {
       </div>
       <form className="login-form" onSubmit={handleSubmit}>
         {aviso && <p className="login-notice" role="status">{aviso}</p>}
+        {simuladorLocalAtivo && <p className="login-notice" role="note">
+          Simulador local: professor@teste.local / Professor123!; gestor@teste.local / Gestor123!.
+          Os dados ficam somente neste navegador.
+        </p>}
         {estado?.logoutPendente && <button type="button" className="login-submit" disabled={carregando} onClick={() => { void tentarLogout() }}>Tentar encerrar sessão novamente</button>}
         <label className="login-field">
           <span>E-mail ou CPF</span>
