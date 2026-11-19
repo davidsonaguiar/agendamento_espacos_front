@@ -419,3 +419,13 @@ a { color: inherit; }
 .real-space-card li { margin-bottom: 8px; }
 @media (max-width: 1100px) { .catalog-controls--api { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .catalog-controls--api { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* O bloqueio do envio permanece visível, inclusive em hover e alto contraste. */
+.booking-send-button:disabled, .booking-send-button:disabled:hover {
+  background: #e1e5e3; color: #404944; border: 2px dashed #69756e;
+  cursor: not-allowed; transform: none;
+}
+.booking-send-feedback { padding: 12px; border-left: 4px solid var(--color-primary); background: #f3f7f5; }
+@media (forced-colors: active) {
+  .booking-send-button:disabled { color: GrayText; border-color: GrayText; }
+}

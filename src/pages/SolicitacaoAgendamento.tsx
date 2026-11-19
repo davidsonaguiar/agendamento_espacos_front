@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Cabecalho } from '../components/Cabecalho'
+import { useRelogioLocal } from '../hooks/useRelogioLocal'
 import { useDisponibilidadeEspaco } from '../hooks/useDisponibilidadeEspaco'
-import { dataLocal, lerData, mesCalendario, periodoMes, horaLocal, exibirHora, intervaloValido, selecaoRealValida, parametrosReais } from '../data/disponibilidade'
+import { dataLocal, lerData, mesCalendario, periodoMes, horaLocal, exibirHora, intervaloValido, selecaoRealValida, parametrosReais, inicioFuturo } from '../data/disponibilidade'
 import type { IntervaloDisponivel } from '../data/disponibilidade'
 
 const formatMonth = (d: Date) => new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(d)
@@ -11,19 +12,21 @@ const formatLong = (d: Date) => new Intl.DateTimeFormat('pt-BR', { weekday: 'lon
 export function SolicitacaoAgendamento({ id }: { id: string }) {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
-  const hoje = dataLocal(new Date())
+  const location = useLocation()
+  const agora = useRelogioLocal()
+  const hoje = dataLocal(agora)
   const mes = mesCalendario(params)
   const periodo = periodoMes(mes, hoje)
   const { estado, tentarNovamente } = useDisponibilidadeEspaco(id, periodo.inicio, periodo.fim)
   const espaco = estado.tipo === 'pronto' ? estado.espaco : undefined
-  const intervalos = estado.tipo === 'pronto' ? estado.intervalos : []
+  const intervalos = estado.tipo === 'pronto' ? estado.intervalos.filter(s => inicioFuturo(s.data, s.inicio, agora)) : []
   const data = params.getAll('data').length === 1 ? lerData(params.get('data')) : null
   const dataIso = data ? dataLocal(data) : ''
   const dentro = Boolean(data && data.getFullYear() === mes.getFullYear() && data.getMonth() === mes.getMonth())
   const slots = dentro ? intervalos.filter(s => s.data === dataIso) : []
   const inicio = params.getAll('inicio').length === 1 ? horaLocal(params.get('inicio')!) ?? '' : ''
   const fim = params.getAll('fim').length === 1 ? horaLocal(params.get('fim')!) ?? '' : ''
-  const valida = Boolean(espaco?.disponivel && dentro && selecaoRealValida(intervalos, params, hoje))
+  const valida = Boolean(espaco?.disponivel && dentro && selecaoRealValida(intervalos, params, agora))
   const primeiroSlotRef = useRef<HTMLButtonElement>(null)
   const focar = useRef(false)
   useEffect(() => {
@@ -32,7 +35,7 @@ export function SolicitacaoAgendamento({ id }: { id: string }) {
   const patch = (valores: Record<string, string | null>) => {
     const next = new URLSearchParams(params)
     for (const [k, v] of Object.entries(valores)) { if (v === null) next.delete(k); else next.set(k, v) }
-    setParams(next)
+    setParams(next, { state: location.state })
   }
   const limpar = () => { focar.current = true; patch({ inicio: null, fim: null }) }
   const mudarMes = (delta: number) => {
@@ -41,7 +44,7 @@ export function SolicitacaoAgendamento({ id }: { id: string }) {
     patch({ mes: dataLocal(next).slice(0, 7), data: null, inicio: null, fim: null })
   }
   const escolher = (slot: IntervaloDisponivel) => {
-    if (!espaco?.disponivel || estado.tipo !== 'pronto') return
+    if (!espaco?.disponivel || estado.tipo !== 'pronto' || !inicioFuturo(slot.data, slot.inicio)) return
     if (!inicio || fim || !slots.some(s => s.inicio === inicio)) patch({ inicio: slot.inicio, fim: null })
     else if (intervaloValido(slots, dataIso, inicio, slot.fim)) patch({ fim: slot.fim })
   }
@@ -98,7 +101,7 @@ export function SolicitacaoAgendamento({ id }: { id: string }) {
         {valida && <section className="booking-selection-summary" aria-label="Resumo do intervalo"><strong>Intervalo selecionado</strong><span>{dataIso} · {exibirHora(inicio)}–{exibirHora(fim)}</span></section>}
         {estado.tipo === 'pronto' && params.has('fim') && !valida && <p role="status">Seleção ausente ou inválida. Escolha um intervalo disponível.</p>}
         <button type="button" className="button button--primary booking-continue" disabled={!valida} onClick={() => {
-          if (valida && selecaoRealValida(intervalos, params)) navigate(`/laboratorios/${id}/agendamento/detalhes${parametrosReais(params)}`)
+          if (valida && selecaoRealValida(intervalos, params)) navigate(`/laboratorios/${id}/agendamento/detalhes${parametrosReais(params)}`, { state: location.state })
         }}>Continuar para os detalhes</button>
       </aside>
     </div>

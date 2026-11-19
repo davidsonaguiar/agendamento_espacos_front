@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { test, afterEach, beforeEach } from 'node:test'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Link } from 'react-router-dom'
+import { MemoryRouter, Router, Link, useLocation } from 'react-router-dom'
 import App from '../src/App'
+import { useEnvioSolicitacao } from '../src/hooks/useEnvioSolicitacao'
 import { consultarHorarios, validarDisponibilidade } from '../src/services/disponibilidade'
 import { dataLocal, datasPeriodo, intervaloValido, lerData, periodoMes, selecaoRealValida } from '../src/data/disponibilidade'
 
@@ -12,6 +13,8 @@ const jwt = () => `a.${Buffer.from(JSON.stringify({ exp: Date.now() / 1000 + 900
 const espacosTeste = [{ id: 77, nome: 'Laboratório API 77', descricao: null, capacidade: 20, bloco: 'Bloco X', disponibilidade: true,
   recursos: [{ id: 501, nome: 'Impressora 3D', tipo: 'Equipamento', autorizacao_necessaria: true, disponibilidade: false, reserva_independente: true, id_espaco: 77 }],
   horarios_funcionamento: [], pausas_funcionamento: [], usuarios_vinculados: [] }]
+let criacaoResposta: unknown = null
+let criacaoStatus = 201
 let horariosResposta: unknown = []
 let espacosResposta: unknown = espacosTeste
 let usuarioResposta = usuario
@@ -24,6 +27,8 @@ beforeEach(() => {
   usuarioResposta = usuario
   espacosResposta = espacosTeste
   horariosResposta = []
+  criacaoResposta = null
+  criacaoStatus = 201
   chamadas = []
   globalThis.fetch = async (input, options) => {
     const url = String(input)
@@ -32,6 +37,11 @@ beforeEach(() => {
     if (url.endsWith('/logout')) { autenticado = false; return new Response(null, { status: 204 }) }
     if (url.endsWith('/usuarios/')) return Response.json(usuario, { status: 201 })
     if (!autenticado) return Response.json({ detail: 'Sessão expirada' }, { status: 401 })
+    if (new URL(url).pathname === '/solicitacoes/') {
+      assert.equal(options?.method, 'POST')
+      assert.match(new Headers(options?.headers).get('Authorization') ?? '', /^Bearer /)
+      return Response.json(criacaoResposta ?? { ...JSON.parse(String(options?.body)), id: 901, status: 'Pendente', id_solicitante: usuarioResposta.id }, { status: criacaoStatus })
+    }
     if (new URL(url).pathname === '/agendamentos/horarios-disponiveis') {
       assert.match(new Headers(options?.headers).get('Authorization') ?? '', /^Bearer /)
       assert.equal(options?.method, 'GET')
@@ -347,7 +357,7 @@ test('calendário permite sábado real, seleciona intervalo contínuo e revalida
   assert.ok(screen.getByText(diaApi))
   assert.ok(screen.getByText('08:00'))
   assert.ok(screen.getByText('10:00'))
-  assert.ok(screen.getByRole('button', { name: 'Envio de solicitação ainda não disponível' }).hasAttribute('disabled'))
+  assert.ok(screen.getByRole('button', { name: 'Enviar solicitação' }).hasAttribute('disabled'))
   assert.equal(consultaApi().length, 2)
   assert.equal(new URL(consultaApi()[1].url).searchParams.get('data_inicio'), diaApi)
   assert.ok(chamadas.every(c => c.body === null))
@@ -562,4 +572,392 @@ test('desmontar calendário cancela consulta em andamento', async () => {
   tela.unmount()
   assert.equal(signal?.aborted, true)
   concluir!(Response.json([slotApi()]))
+})
+
+
+function EstadoRotaTeste() {
+  const location = useLocation()
+  return <output data-testid="rota-atual">{location.pathname + location.search}</output>
+}
+
+test('formulário valida finalidade de forma acessível e prepara prévia apenas com GET', async () => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  const user = userEvent.setup()
+  abrir(`/laboratorios/77/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`)
+  const campo = await screen.findByRole('textbox', { name: 'Finalidade da solicitação' })
+  await user.click(screen.getByRole('button', { name: 'Revisar solicitação' }))
+  assert.ok(screen.getByText('Informe a finalidade da solicitação.'))
+  assert.equal(campo.getAttribute('aria-invalid'), 'true')
+  assert.equal(document.activeElement, campo)
+  await user.type(campo, ' x ')
+  await user.tab()
+  assert.ok(screen.getByText('A finalidade deve ter pelo menos 3 caracteres.'))
+  await user.clear(campo)
+  await user.paste('x'.repeat(256))
+  await user.tab()
+  assert.ok(screen.getByText('A finalidade deve ter no máximo 255 caracteres.'))
+  await user.clear(campo)
+  await user.type(campo, '  Reunião acadêmica  ')
+  await user.click(screen.getByRole('button', { name: 'Revisar solicitação' }))
+  await screen.findByText('Prévia preparada localmente. Nenhuma solicitação foi enviada.')
+  assert.ok(screen.getByRole('region', { name: 'Finalidade revisada' }).textContent?.includes('Reunião acadêmica'))
+  assert.equal(consultaApi().length, 2)
+  assert.equal(screen.getByRole('button', { name: 'Enviar solicitação' }).hasAttribute('disabled'), false)
+  assert.equal(chamadas.filter(c => c.url.includes('/solicitacoes')).length, 0)
+  assert.ok(chamadas.every(c => c.body === null))
+})
+
+test('rascunho sobrevive à ida e volta com edição de horário sem entrar em URL ou storage', async () => {
+  autenticado = true
+  horariosResposta = [slotApi(), slotApi(diaApi, '09:00:00', '10:00:00')]
+  const user = userEvent.setup()
+  render(<MemoryRouter initialEntries={[`/laboratorios/77/agendamento/detalhes?mes=2090-01&data=${diaApi}&inicio=08:00&fim=09:00`]}><EstadoRotaTeste /><App /></MemoryRouter>)
+  await user.type(await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }), 'Reunião do grupo de estudo')
+  await user.click(screen.getByRole('link', { name: 'Voltar ao calendário' }))
+  await screen.findByRole('button', { name: /09:00–10:00/ })
+  await user.click(screen.getByRole('button', { name: /09:00–10:00/ }))
+  await user.click(screen.getByRole('button', { name: /09:00–10:00/ }))
+  await user.click(screen.getByRole('button', { name: 'Continuar para os detalhes' }))
+  assert.equal((await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }) as HTMLTextAreaElement).value, 'Reunião do grupo de estudo')
+  assert.ok(screen.getByText('09:00'))
+  assert.ok(screen.getByText('10:00'))
+  assert.doesNotMatch(screen.getByTestId('rota-atual').textContent ?? '', /finalidade|Reunião|estudo/)
+  for (let i = 0; i < sessionStorage.length; i++) {
+    assert.doesNotMatch(sessionStorage.getItem(sessionStorage.key(i)!) ?? '', /Reunião do grupo/)
+  }
+  assert.equal(chamadas.filter(c => c.url.includes('/solicitacoes')).length, 0)
+})
+
+for (const rascunho of [
+  { idEspaco: '88', idUsuario: 1, finalidade: 'Texto de outro laboratório' },
+  { idEspaco: '77', idUsuario: 99, finalidade: 'Texto de outro usuário' },
+]) {
+  test(`rascunho é isolado por usuário e laboratório: ${rascunho.idEspaco}/${rascunho.idUsuario}`, async () => {
+    autenticado = true
+    horariosResposta = [slotApi()]
+    render(<MemoryRouter initialEntries={[{ pathname: '/laboratorios/77/agendamento/detalhes', search: `?data=${diaApi}&inicio=08:00&fim=09:00`, state: { rascunhoSolicitacao: rascunho } }]}><App /></MemoryRouter>)
+    assert.equal((await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }) as HTMLTextAreaElement).value, '')
+  })
+}
+
+test('trocar de laboratório não reaproveita finalidade do formulário anterior', async () => {
+  autenticado = true
+  espacosResposta = [espacosTeste[0], { ...espacosTeste[0], id: 88, nome: 'Laboratório API 88', recursos: [] }]
+  horariosResposta = [slotApi()]
+  const user = userEvent.setup()
+  render(<MemoryRouter initialEntries={[`/laboratorios/77/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`]}><Link to={`/laboratorios/88/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`}>Mudar espaço</Link><App /></MemoryRouter>)
+  await user.type(await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }), 'Finalidade do espaço 77')
+  await user.click(screen.getByRole('link', { name: 'Mudar espaço' }))
+  await screen.findByText('Laboratório API 88')
+  assert.equal((await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }) as HTMLTextAreaElement).value, '')
+})
+
+test('revisão reconsulta disponibilidade e impede payload de seleção que ficou indisponível', async () => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  const user = userEvent.setup()
+  abrir(`/laboratorios/77/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`)
+  await user.type(await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }), 'Uso acadêmico')
+  horariosResposta = []
+  await user.click(screen.getByRole('button', { name: 'Revisar solicitação' }))
+  await screen.findByRole('heading', { name: 'Seleção ausente ou inválida' })
+  assert.equal(screen.queryByText('Prévia preparada localmente. Nenhuma solicitação foi enviada.'), null)
+  assert.equal(chamadas.filter(c => c.url.includes('/solicitacoes')).length, 0)
+})
+
+test('calendário e formulário recusam início vencido no dia atual e revalidam tela aberta', async t => {
+  const agora = new Date(2026, 10, 18, 10, 30, 0)
+  t.mock.timers.enable({ apis: ['Date'], now: agora.getTime() })
+  autenticado = true
+  const hoje = dataLocal(agora)
+  horariosResposta = [slotApi(hoje, '08:00:00', '09:00:00'), slotApi(hoje, '10:30:01', '11:30:01')]
+  const calendario = abrir(`/laboratorios/77/agendamento?data=${hoje}&inicio=08:00&fim=09:00`)
+  await screen.findByText('Seleção ausente ou inválida. Escolha um intervalo disponível.')
+  assert.equal(screen.queryByRole('button', { name: /08:00–09:00/ }), null)
+  assert.ok(screen.getByRole('button', { name: /10:30:01–11:30:01/ }))
+  assert.ok(screen.getByRole('button', { name: 'Continuar para os detalhes' }).hasAttribute('disabled'))
+  calendario.unmount()
+  abrir(`/laboratorios/77/agendamento/detalhes?data=${hoje}&inicio=10:30:01&fim=11:30:01`)
+  await screen.findByRole('textbox', { name: 'Finalidade da solicitação' })
+  await act(async () => {
+    t.mock.timers.tick(2000)
+    window.dispatchEvent(new Event('focus'))
+  })
+  await screen.findByRole('heading', { name: 'Seleção ausente ou inválida' })
+  assert.equal(screen.queryByRole('button', { name: 'Revisar solicitação' }), null)
+})
+
+test('resposta antiga de revisão não prepara payload após mudança de data', async () => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  const user = userEvent.setup()
+  const fetchValido = globalThis.fetch
+  let revisando = false
+  let concluir: ((r: Response) => void) | undefined
+  let signal: AbortSignal | undefined
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(String(input))
+    if (revisando && url.pathname.includes('/horarios-disponiveis') && url.searchParams.get('data_inicio') === diaApi) {
+      signal = options?.signal ?? undefined
+      return new Promise<Response>(resolve => { concluir = resolve })
+    }
+    if (url.pathname.includes('/horarios-disponiveis') && url.searchParams.get('data_inicio') === '2090-01-08') return Response.json([])
+    return fetchValido(input, options)
+  }
+  render(<MemoryRouter initialEntries={[`/laboratorios/77/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`]}><Link to="/laboratorios/77/agendamento/detalhes?data=2090-01-08&inicio=08:00&fim=09:00">Alterar data diretamente</Link><App /></MemoryRouter>)
+  await user.type(await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }), 'Uso acadêmico')
+  revisando = true
+  await user.click(screen.getByRole('button', { name: 'Revisar solicitação' }))
+  await waitFor(() => assert.ok(concluir))
+  await user.click(screen.getByRole('link', { name: 'Alterar data diretamente' }))
+  await screen.findByRole('heading', { name: 'Seleção ausente ou inválida' })
+  assert.equal(signal?.aborted, true)
+  concluir!(Response.json([slotApi()]))
+  await act(async () => { await Promise.resolve() })
+  assert.equal(screen.queryByText('Prévia preparada localmente. Nenhuma solicitação foi enviada.'), null)
+})
+
+
+const postsCriacao = () => chamadas.filter(c => new URL(c.url).pathname === '/solicitacoes/')
+async function prepararEnvio() {
+  const user = userEvent.setup()
+  abrir(`/laboratorios/77/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`)
+  await user.type(await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }), 'Reunião acadêmica')
+  await user.click(screen.getByRole('button', { name: 'Revisar solicitação' }))
+  await screen.findByText('Prévia preparada localmente. Nenhuma solicitação foi enviada.')
+  return user
+}
+
+test('envio faz um único POST em duplo clique e exibe confirmação real com ID e status', async () => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  const user = await prepararEnvio()
+  await user.dblClick(screen.getByRole('button', { name: 'Enviar solicitação' }))
+  await screen.findByRole('heading', { name: 'Solicitação registrada' })
+  assert.ok(screen.getByText('Solicitação enviada e aguardando análise.'))
+  assert.ok(screen.getByText('901'))
+  assert.ok(screen.getByText('Pendente'))
+  assert.ok(screen.getByText('Este envio não confirma reserva de horário. A solicitação segue o processo de análise.'))
+  assert.equal(postsCriacao().length, 1)
+  assert.deepEqual(postsCriacao()[0].body, { id_espaco: 77, finalidade: 'Reunião acadêmica', horarios: [{ data_reserva: diaApi, hora_inicio: '08:00:00', hora_fim: '09:00:00' }] })
+  assert.equal(screen.queryByRole('button', { name: 'Enviar solicitação' }), null)
+  await user.keyboard('{Enter}')
+  assert.equal(postsCriacao().length, 1)
+})
+
+test('Enter e re-render não duplicam POST em andamento; finalidade fica preservada', async () => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  const user = await prepararEnvio()
+  const fetchValido = globalThis.fetch
+  let concluir: ((r: Response) => void) | undefined
+  let corpo: Record<string, unknown> = {}
+  let posts = 0
+  globalThis.fetch = async (input, options) => {
+    if (String(input).includes('/solicitacoes/')) {
+      posts++
+      corpo = JSON.parse(String(options?.body))
+      return new Promise<Response>(resolve => { concluir = resolve })
+    }
+    return fetchValido(input, options)
+  }
+  const enviar = screen.getByRole('button', { name: 'Enviar solicitação' })
+  enviar.focus()
+  await user.keyboard('{Enter}{Enter}')
+  await waitFor(() => assert.ok(concluir))
+  assert.ok(screen.getByText('Enviando solicitação...'))
+  assert.ok(screen.getByRole('button', { name: 'Enviar solicitação' }).hasAttribute('disabled'))
+  await act(async () => { window.dispatchEvent(new Event('focus')) })
+  assert.equal(posts, 1)
+  concluir!(Response.json({ ...corpo, id: 902, status: 'Pendente', id_solicitante: 1 }, { status: 201 }))
+  await screen.findByText('902')
+  assert.equal(posts, 1)
+})
+
+for (const [status, detail, mensagem] of [
+  [401, 'Expirada', 'Sessão expirada ou inválida. Entre novamente antes de tentar enviar.'],
+  [403, 'Proibido', 'Você não tem permissão para criar esta solicitação.'],
+  [404, 'Ausente', 'Laboratório não encontrado. Volte ao catálogo.'],
+  [422, 'Finalidade inválida na API', 'Finalidade inválida na API'],
+  [422, [{ loc: ['body', 'finalidade'], msg: 'Finalidade precisa ser corrigida' }], 'Finalidade precisa ser corrigida'],
+] as const) {
+  test(`erro confirmado ${status} preserva formulário sem repetir criação: ${mensagem}`, async () => {
+    autenticado = true
+    horariosResposta = [slotApi()]
+    criacaoStatus = status
+    criacaoResposta = { detail }
+    const user = await prepararEnvio()
+    const refreshAntes = chamadas.filter(c => c.url.endsWith('/refresh')).length
+    await user.click(screen.getByRole('button', { name: 'Enviar solicitação' }))
+    await screen.findByText(mensagem)
+    assert.equal(postsCriacao().length, 1)
+    assert.equal(chamadas.filter(c => c.url.endsWith('/refresh')).length, refreshAntes)
+    assert.equal((screen.getByRole('textbox', { name: 'Finalidade da solicitação' }) as HTMLTextAreaElement).value, 'Reunião acadêmica')
+    assert.equal(screen.queryByRole('heading', { name: 'Solicitação registrada' }), null)
+  })
+}
+
+for (const modo of ['rede', '500', 'resposta-invalida', 'status-200']) {
+  test(`resultado incerto ${modo} bloqueia reenvio e preserva finalidade editável`, async () => {
+    autenticado = true
+    horariosResposta = [slotApi()]
+    const user = await prepararEnvio()
+    const fetchValido = globalThis.fetch
+    let posts = 0
+    globalThis.fetch = async (input, options) => {
+      if (String(input).includes('/solicitacoes/')) {
+        posts++
+        if (modo === 'rede') throw Error('offline')
+        if (modo === '500') return Response.json({ detail: 'Falha interna' }, { status: 500 })
+        if (modo === 'resposta-invalida') return Response.json({}, { status: 201 })
+        return Response.json({ ...JSON.parse(String(options?.body)), id: 901, status: 'Pendente', id_solicitante: 1 }, { status: 200 })
+      }
+      return fetchValido(input, options)
+    }
+    await user.click(screen.getByRole('button', { name: 'Enviar solicitação' }))
+    await screen.findByText('A solicitação pode ter sido registrada. Não reenvie automaticamente.')
+    const campo = screen.getByRole('textbox', { name: 'Finalidade da solicitação' }) as HTMLTextAreaElement
+    assert.equal(campo.value, 'Reunião acadêmica')
+    await user.type(campo, ' editada')
+    assert.ok(screen.getByRole('button', { name: 'Enviar solicitação' }).hasAttribute('disabled'))
+    assert.equal(posts, 1)
+    assert.equal(screen.queryByText('Prévia preparada localmente. Nenhuma solicitação foi enviada.'), null)
+    assert.equal(screen.queryByRole('heading', { name: 'Solicitação registrada' }), null)
+  })
+}
+
+test('falha antes do POST é identificada e disponibilidade alterada impede transmissão', async () => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  const user = await prepararEnvio()
+  horariosResposta = []
+  await user.click(screen.getByRole('button', { name: 'Enviar solicitação' }))
+  await screen.findByText('Selecione um intervalo futuro e disponível.')
+  assert.equal(postsCriacao().length, 0)
+  assert.equal((screen.getByRole('textbox', { name: 'Finalidade da solicitação' }) as HTMLTextAreaElement).value, 'Reunião acadêmica')
+  assert.equal(screen.queryByText('A solicitação pode ter sido registrada. Não reenvie automaticamente.'), null)
+})
+
+test('confirmação fica preservada no estado da navegação e não permite novo envio ao remontar', async () => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  const user = userEvent.setup()
+  let salvo: unknown
+  function CapturarEstado() { salvo = useLocation().state; return null }
+  const tela = render(<MemoryRouter initialEntries={[`/laboratorios/77/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`]}><CapturarEstado /><App /></MemoryRouter>)
+  await user.type(await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }), 'Reunião acadêmica')
+  await user.click(screen.getByRole('button', { name: 'Revisar solicitação' }))
+  await screen.findByText('Prévia preparada localmente. Nenhuma solicitação foi enviada.')
+  await user.click(screen.getByRole('button', { name: 'Enviar solicitação' }))
+  await screen.findByRole('heading', { name: 'Solicitação registrada' })
+  tela.unmount()
+  render(<MemoryRouter initialEntries={[{ pathname: '/laboratorios/77/agendamento/detalhes', search: `?data=${diaApi}&inicio=08:00&fim=09:00`, state: salvo }]}><App /></MemoryRouter>)
+  await screen.findByRole('heading', { name: 'Solicitação registrada' })
+  assert.equal(screen.queryByRole('button', { name: 'Enviar solicitação' }), null)
+  assert.equal(postsCriacao().length, 1)
+})
+
+
+test('timeout de criação mantém resultado incerto ao remontar a mesma navegação', async t => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  let salvo: unknown
+  function CapturarEstado() { salvo = useLocation().state; return null }
+  const user = userEvent.setup()
+  const tela = render(<MemoryRouter initialEntries={[`/laboratorios/77/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`]}><CapturarEstado /><App /></MemoryRouter>)
+  await user.type(await screen.findByRole('textbox', { name: 'Finalidade da solicitação' }), 'Reunião acadêmica')
+  await user.click(screen.getByRole('button', { name: 'Revisar solicitação' }))
+  await screen.findByText('Prévia preparada localmente. Nenhuma solicitação foi enviada.')
+  const timeoutOriginal = AbortSignal.timeout.bind(AbortSignal)
+  t.mock.method(AbortSignal, 'timeout', () => timeoutOriginal(15))
+  const fetchValido = globalThis.fetch
+  let posts = 0
+  globalThis.fetch = async (input, options) => {
+    if (String(input).includes('/solicitacoes/')) {
+      posts++
+      return new Promise<Response>((_resolve, reject) => {
+        options?.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true })
+      })
+    }
+    return fetchValido(input, options)
+  }
+  await user.click(screen.getByRole('button', { name: 'Enviar solicitação' }))
+  await screen.findByText('A solicitação pode ter sido registrada. Não reenvie automaticamente.')
+  assert.equal(posts, 1)
+  tela.unmount()
+  render(<MemoryRouter initialEntries={[{ pathname: '/laboratorios/77/agendamento/detalhes', search: `?data=${diaApi}&inicio=08:00&fim=09:00`, state: salvo }]}><App /></MemoryRouter>)
+  await screen.findByRole('textbox', { name: 'Finalidade da solicitação' })
+  await screen.findByText('A solicitação pode ter sido registrada. Não reenvie automaticamente.')
+  assert.equal((screen.getByRole('textbox', { name: 'Finalidade da solicitação' }) as HTMLTextAreaElement).value, 'Reunião acadêmica')
+  assert.ok(screen.getByRole('button', { name: 'Enviar solicitação' }).hasAttribute('disabled'))
+  assert.equal(posts, 1)
+})
+
+
+test('botão explica finalidade inválida, revisão pendente e alteração após revisão sem enviar', async () => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  const user = userEvent.setup()
+  abrir(`/laboratorios/77/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`)
+  const campo = await screen.findByRole('textbox', { name: 'Finalidade da solicitação' })
+  const botao = () => screen.getByRole('button', { name: 'Enviar solicitação' })
+  const ajuda = () => document.getElementById(botao().getAttribute('aria-describedby')!)!
+  assert.ok(botao().hasAttribute('disabled'))
+  assert.match(ajuda().textContent!, /Informe a finalidade/)
+  assert.equal(ajuda().getAttribute('role'), 'status')
+  await user.type(campo, 'Reunião acadêmica')
+  assert.ok(botao().hasAttribute('disabled'))
+  assert.match(ajuda().textContent!, /Clique em Revisar solicitação/)
+  await user.click(botao())
+  assert.equal(postsCriacao().length, 0)
+  await user.click(screen.getByRole('button', { name: 'Revisar solicitação' }))
+  await waitFor(() => assert.equal(botao().hasAttribute('disabled'), false))
+  assert.match(ajuda().textContent!, /Dados revisados/)
+  await user.type(screen.getByRole('textbox', { name: 'Finalidade da solicitação' }), ' editada')
+  assert.ok(botao().hasAttribute('disabled'))
+  assert.match(ajuda().textContent!, /mudou.*Revisar solicitação novamente/)
+  await user.click(screen.getByRole('button', { name: 'Revisar solicitação' }))
+  await waitFor(() => assert.equal(botao().hasAttribute('disabled'), false))
+  assert.equal(postsCriacao().length, 0)
+})
+
+test('bloqueio por resultado incerto tem explicação associada mesmo após editar finalidade', async () => {
+  autenticado = true
+  horariosResposta = [slotApi()]
+  const user = await prepararEnvio()
+  criacaoStatus = 500
+  await user.click(screen.getByRole('button', { name: 'Enviar solicitação' }))
+  await screen.findByText('A solicitação pode ter sido registrada. Não reenvie automaticamente.')
+  const botao = screen.getByRole('button', { name: 'Enviar solicitação' })
+  const ajuda = document.getElementById(botao.getAttribute('aria-describedby')!)!
+  assert.ok(botao.hasAttribute('disabled'))
+  assert.match(ajuda.textContent!, /tentativa anterior sem confirmação/)
+  await user.type(screen.getByRole('textbox', { name: 'Finalidade da solicitação' }), ' editada')
+  assert.match(ajuda.textContent!, /tentativa anterior sem confirmação/)
+  assert.equal(postsCriacao().length, 1)
+})
+
+test('falha da navegação inicial é tratada antes de qualquer consulta ou POST e libera trava', async () => {
+  let preparacoes = 0
+  let navegacoes = 0
+  function ProvaEnvio() {
+    const envio = useEnvioSolicitacao('teste-escopo', 1)
+    return <><button disabled={envio.ocupado || envio.bloqueado} onClick={() => {
+      void envio.enviar(async () => { preparacoes++; throw Error('Não deveria preparar') })
+    }}>Testar envio</button>{envio.estado.tipo === 'erro' && <p role="alert">{envio.estado.mensagem}</p>}</>
+  }
+  const navigator = { createHref: () => '/', go: () => {}, push: () => {}, replace: () => { navegacoes++; throw Error('DataCloneError simulado') } }
+  render(<Router location="/teste" navigator={navigator}><ProvaEnvio /></Router>)
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Testar envio' }))
+  await screen.findByText('Não foi possível atualizar a navegação antes do envio. Nenhuma criação foi enviada.')
+  assert.equal(preparacoes, 0)
+  assert.equal(chamadas.length, 0)
+  assert.equal(screen.getByRole('button', { name: 'Testar envio' }).hasAttribute('disabled'), false)
+  const anteriores = navegacoes
+  await user.click(screen.getByRole('button', { name: 'Testar envio' }))
+  assert.ok(navegacoes > anteriores)
+  assert.equal(preparacoes, 0)
+  assert.equal(chamadas.length, 0)
 })

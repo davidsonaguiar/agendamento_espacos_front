@@ -21,6 +21,7 @@ export interface OpcoesHttp {
   signal?: AbortSignal
   credentials?: RequestCredentials
   token?: string
+  statusEsperado?: number
 }
 
 function mensagemErro(corpo: unknown, status: number): string {
@@ -89,6 +90,9 @@ export async function requisitar<T = unknown>(
   }
   if (!resposta.ok) {
     throw new ErroHttp('http', mensagemErro(corpo, resposta.status), resposta.status, corpo)
+  }
+  if (opcoes.statusEsperado !== undefined && resposta.status !== opcoes.statusEsperado) {
+    throw new ErroHttp('resposta', 'A API retornou um status de sucesso inesperado.', resposta.status)
   }
   if (!jsonValido) {
     throw new ErroHttp('resposta', 'A API retornou uma resposta que não é JSON válido.', resposta.status, corpo)

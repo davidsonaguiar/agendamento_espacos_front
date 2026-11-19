@@ -235,7 +235,7 @@ test('detalhe real não oferece horários ou formulário fictícios', async () =
   const html = await renderTela('../src/pages/DetalhesEspacoIntegrado.tsx', {
     tipo: 'pronto', espacos: [catalogo.adaptarEspaco(espaco())],
   }, { id: '1' })
-  assert.match(html, /envio de solicitações permanece bloqueado/)
+  assert.match(html, /solicitação para análise/)
   assert.doesNotMatch(html, /Próximos horários livres|09:00|Sala 201|Revisar solicitação/)
 })
 

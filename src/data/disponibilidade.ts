@@ -15,7 +15,7 @@ export function lerData(valor: string | null): Date | null {
 export function horaLocal(valor: string): string | null {
   const match = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d)(\.\d{1,6})?)?$/.exec(valor)
   if (!match) return null
-  const fracao = (match[4] ?? '').replace(/0+$/, '').replace(/\.$/, '')
+  const fracao = match[4] ?? ''
   return `${match[1]}:${match[2]}:${match[3] ?? '00'}${fracao}`
 }
 export const segundos = (hora: string) => {
@@ -45,23 +45,39 @@ export function datasPeriodo(inicio: string, fim: string): string[] {
   }
   return datas
 }
+/** Comparação exata em microssegundos, sem Date nem perda de precisão. */
+export function microsHora(valor: string): number | null {
+  const hora = horaLocal(valor)
+  if (!hora) return null
+  const [h, m, resto] = hora.split(':')
+  const [s, fracao = ''] = resto.split('.')
+  return (Number(h) * 3600 + Number(m) * 60 + Number(s)) * 1_000_000 + Number(fracao.padEnd(6, '0'))
+}
+export function inicioFuturo(data: string, inicio: string, agora = new Date()): boolean {
+  const hora = microsHora(inicio)
+  if (!lerData(data) || hora === null) return false
+  const hoje = dataLocal(agora)
+  const momento = (agora.getHours() * 3600 + agora.getMinutes() * 60 + agora.getSeconds()) * 1_000_000 + agora.getMilliseconds() * 1000
+  return data > hoje || (data === hoje && hora > momento)
+}
 /** Só aceita limites presentes na API e uma cadeia exata sem lacunas. */
 export function intervaloValido(slots: readonly IntervaloDisponivel[], data: string, inicio: string, fim: string): boolean {
-  const a = horaLocal(inicio), b = horaLocal(fim)
-  if (!a || !b || a >= b || !lerData(data)) return false
+  const a = microsHora(inicio), b = microsHora(fim)
+  if (a === null || b === null || a >= b || !lerData(data)) return false
   let cursor = a
-  for (const slot of slots.filter(s => s.data === data).toSorted((x, y) => x.inicio.localeCompare(y.inicio))) {
-    if (slot.inicio !== cursor) continue
-    if (slot.fim > b) return false
-    cursor = slot.fim
+  for (const slot of slots.filter(s => s.data === data).toSorted((x, y) => microsHora(x.inicio)! - microsHora(y.inicio)!)) {
+    if (microsHora(slot.inicio) !== cursor) continue
+    const termino = microsHora(slot.fim)
+    if (termino === null || termino <= cursor || termino > b) return false
+    cursor = termino
     if (cursor === b) return true
   }
   return false
 }
-export function selecaoRealValida(slots: readonly IntervaloDisponivel[], params: URLSearchParams, hoje = dataLocal(new Date())) {
+export function selecaoRealValida(slots: readonly IntervaloDisponivel[], params: URLSearchParams, agora = new Date()) {
   if (['data', 'inicio', 'fim'].some(chave => params.getAll(chave).length !== 1)) return false
-  const data = params.get('data')!
-  return data >= hoje && intervaloValido(slots, data, params.get('inicio')!, params.get('fim')!)
+  const data = params.get('data')!, inicio = params.get('inicio')!
+  return inicioFuturo(data, inicio, agora) && intervaloValido(slots, data, inicio, params.get('fim')!)
 }
 export function parametrosReais(params: URLSearchParams): string {
   const query = new URLSearchParams()
