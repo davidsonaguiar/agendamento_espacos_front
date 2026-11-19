@@ -244,10 +244,12 @@ async function conferirSessao(versao: number): Promise<UsuarioAutenticado | null
     if (versao !== versaoSessao) return null
     // Um access token revogado/expirado pode ser recuperado pelo cookie de refresh.
     if (erro instanceof ErroAutenticacao && erro.status === 401 && !renovou) {
-      const novaSessao = await renovarSessao()
-      if (!novaSessao) return null
+      // Outra chamada pode ter concluído o refresh enquanto /me estava em trânsito.
+      let tokenAtual = obterTokenAcesso()
+      if (tokenAtual === token) tokenAtual = (await renovarSessao())?.access_token ?? null
+      if (!tokenAtual) return null
       try {
-        return await consultarUsuario(novaSessao.access_token, versao)
+        return await consultarUsuario(tokenAtual, versao)
       } catch (erroRenovado) {
         if (versao !== versaoSessao) return null
         if (erroRenovado instanceof ErroAutenticacao && [401, 403].includes(erroRenovado.status ?? -1)) {
