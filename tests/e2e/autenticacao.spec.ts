@@ -9,6 +9,8 @@ const token = (agora: number, segundos = 900) => `a.${Buffer.from(JSON.stringify
 async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInvalido?: boolean; logoutFalha?: boolean; expiraEm?: number } = {}) {
   let autenticado = opcoes.autenticado ?? false
   const chamadas: { caminho: string; corpo: unknown; authorization?: string }[] = []
+  // Na composição com o catálogo, o login também monta a consulta de espaços.
+  await page.route('**/espacos/?*', route => route.fulfill({ status: 200, json: [] }))
   await page.route('**/usuarios/**', async route => {
     const request = route.request()
     const caminho = new URL(request.url()).pathname

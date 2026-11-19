@@ -17,6 +17,7 @@ beforeEach(() => {
   globalThis.fetch = async (input, options) => {
     const url = String(input)
     chamadas.push({ url, body: options?.body ? JSON.parse(String(options.body)) : null })
+    if (new URL(url).pathname === '/espacos/') return Response.json([])
     if (url.endsWith('/login')) autenticado = true
     if (url.endsWith('/logout')) { autenticado = false; return new Response(null, { status: 204 }) }
     if (url.endsWith('/usuarios/')) return Response.json(usuario, { status: 201 })
