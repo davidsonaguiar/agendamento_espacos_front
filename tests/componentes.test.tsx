@@ -4,6 +4,9 @@ import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Router, Link, useLocation } from 'react-router-dom'
 import App from '../src/App'
+import { MeusAgendamentos } from '../src/pages/MeusAgendamentos'
+import { encerrarSessao } from '../src/services/autenticacao'
+import type { SolicitacaoConsulta } from '../src/types/solicitacaoConsulta'
 import { useEnvioSolicitacao } from '../src/hooks/useEnvioSolicitacao'
 import { consultarHorarios, validarDisponibilidade } from '../src/services/disponibilidade'
 import { dataLocal, datasPeriodo, intervaloValido, lerData, periodoMes, selecaoRealValida } from '../src/data/disponibilidade'
@@ -13,13 +16,14 @@ const jwt = () => `a.${Buffer.from(JSON.stringify({ exp: Date.now() / 1000 + 900
 const espacosTeste = [{ id: 77, nome: 'Laboratório API 77', descricao: null, capacidade: 20, bloco: 'Bloco X', disponibilidade: true,
   recursos: [{ id: 501, nome: 'Impressora 3D', tipo: 'Equipamento', autorizacao_necessaria: true, disponibilidade: false, reserva_independente: true, id_espaco: 77 }],
   horarios_funcionamento: [], pausas_funcionamento: [], usuarios_vinculados: [] }]
+let solicitacoesResposta: unknown = []
 let criacaoResposta: unknown = null
 let criacaoStatus = 201
 let horariosResposta: unknown = []
 let espacosResposta: unknown = espacosTeste
 let usuarioResposta = usuario
 let autenticado = false
-let chamadas: { url: string; body: unknown }[] = []
+let chamadas: { url: string; body: unknown; method?: string }[] = []
 
 beforeEach(() => {
   sessionStorage.clear()
@@ -27,17 +31,19 @@ beforeEach(() => {
   usuarioResposta = usuario
   espacosResposta = espacosTeste
   horariosResposta = []
+  solicitacoesResposta = []
   criacaoResposta = null
   criacaoStatus = 201
   chamadas = []
   globalThis.fetch = async (input, options) => {
     const url = String(input)
-    chamadas.push({ url, body: options?.body ? JSON.parse(String(options.body)) : null })
+    chamadas.push({ url, body: options?.body ? JSON.parse(String(options.body)) : null, method: options?.method ?? 'GET' })
     if (url.endsWith('/login')) autenticado = true
     if (url.endsWith('/logout')) { autenticado = false; return new Response(null, { status: 204 }) }
     if (url.endsWith('/usuarios/')) return Response.json(usuario, { status: 201 })
     if (!autenticado) return Response.json({ detail: 'Sessão expirada' }, { status: 401 })
     if (new URL(url).pathname === '/solicitacoes/') {
+      if (options?.method === 'GET') return Response.json(solicitacoesResposta)
       assert.equal(options?.method, 'POST')
       assert.match(new Headers(options?.headers).get('Authorization') ?? '', /^Bearer /)
       return Response.json(criacaoResposta ?? { ...JSON.parse(String(options?.body)), id: 901, status: 'Pendente', id_solicitante: usuarioResposta.id }, { status: criacaoStatus })
@@ -719,7 +725,7 @@ test('resposta antiga de revisão não prepara payload após mudança de data', 
 })
 
 
-const postsCriacao = () => chamadas.filter(c => new URL(c.url).pathname === '/solicitacoes/')
+const postsCriacao = () => chamadas.filter(c => new URL(c.url).pathname === '/solicitacoes/' && c.method === 'POST')
 async function prepararEnvio() {
   const user = userEvent.setup()
   abrir(`/laboratorios/77/agendamento/detalhes?data=${diaApi}&inicio=08:00&fim=09:00`)
@@ -960,4 +966,245 @@ test('falha da navegação inicial é tratada antes de qualquer consulta ou POST
   assert.ok(navegacoes > anteriores)
   assert.equal(preparacoes, 0)
   assert.equal(chamadas.length, 0)
+})
+
+
+function solicitacaoApiTeste(id = 3, autor = 1): SolicitacaoConsulta {
+  return { id, finalidade: `Finalidade API ${id}`, urgencia: false, status: 'Pendente', decisao_justificativa: null,
+    id_projeto: null, id_solicitante: autor, id_espaco: 2, espaco_reservado: true,
+    espaco: { id: 2, nome: 'Sala de reuniões (seed)', descricao: null, capacidade: 12, bloco: null, disponibilidade: true },
+    projeto: null, solicitante: null, usuarios_envolvidos: [], ids_recursos: [], anexos: [], interacoes: [],
+    horarios: [{ id: 3, data_reserva: '2026-11-22', hora_inicio: '13:00:00', hora_fim: '14:00:00' }] }
+}
+function montarAgendaReal() {
+  autenticado = true
+  sessionStorage.setItem('labagenda.access_token', jwt())
+  sessionStorage.setItem('labagenda.usuario', JSON.stringify(usuario))
+  return render(<MemoryRouter><MeusAgendamentos /></MemoryRouter>)
+}
+const getsAgenda = () => chamadas.filter(c => new URL(c.url).pathname === '/solicitacoes/' && c.method === 'GET')
+
+test('agenda real apresenta solicitação #3 própria e exclui terceiros sem operações de escrita', async () => {
+  solicitacoesResposta = [solicitacaoApiTeste(), solicitacaoApiTeste(4, 99)]
+  montarAgendaReal()
+  await screen.findByText('Solicitação #3')
+  assert.ok(screen.getByText('Sala de reuniões (seed)'))
+  assert.ok(screen.getByText('Finalidade API 3'))
+  assert.ok(screen.getByText('22/11/2026'))
+  assert.ok(screen.getByText('13:00 – 14:00'))
+  assert.equal(screen.queryByText('Finalidade API 4'), null)
+  assert.equal(getsAgenda().length, 1)
+  assert.ok(chamadas.every(c => c.method === 'GET'))
+})
+
+test('agenda distingue lista vazia de filtro sem resultados', async () => {
+  const user = userEvent.setup()
+  montarAgendaReal()
+  await screen.findByText('Você ainda não possui solicitações.')
+  solicitacoesResposta = [solicitacaoApiTeste()]
+  await user.click(screen.getByRole('button', { name: 'Atualizar' }))
+  await screen.findByText('Solicitação #3')
+  await user.click(screen.getByRole('button', { name: 'Rejeitado' }))
+  assert.match(screen.getByText(/Nenhuma solicitação corresponde/).textContent!, /Todos/)
+  assert.equal(screen.queryByText('Você ainda não possui solicitações.'), null)
+})
+
+test('agenda preserva seis filtros e apresenta status desconhecido somente em Todos', async () => {
+  const valores = ['Pendente', 'AguardandoComplementacao', 'AguardandoRespostaProposta', 'Aprovado', 'Rejeitado', 'Cancelada']
+  solicitacoesResposta = [...valores, 'EstadoNovo'].map((status, i) => ({ ...solicitacaoApiTeste(i + 3), status }))
+  montarAgendaReal()
+  await screen.findByText('Status desconhecido: EstadoNovo')
+  assert.equal(screen.getAllByRole('article').length, 7)
+  const user = userEvent.setup()
+  for (const rotulo of ['Pendente', 'Aguardando complementação', 'Aguardando resposta à proposta', 'Aprovado', 'Rejeitado', 'Cancelada']) {
+    await user.click(screen.getByRole('button', { name: rotulo }))
+    assert.equal(screen.getAllByRole('article').length, 1)
+    assert.equal(screen.queryByText('Status desconhecido: EstadoNovo'), null)
+  }
+  await user.click(screen.getByRole('button', { name: 'Todos' }))
+  assert.equal(screen.getAllByRole('article').length, 7)
+  assert.equal(getsAgenda().length, 1)
+})
+
+test('cartão suporta relações nulas, decisão e múltiplos horários com microssegundos', async () => {
+  const r = solicitacaoApiTeste()
+  r.id = null; r.espaco = null; r.status = 'Rejeitado'; r.decisao_justificativa = 'Uso incompatível com a finalidade do espaço.'
+  r.horarios = [{ id: null, data_reserva: '2026-11-23', hora_inicio: '13:00:00.000001', hora_fim: '14:00:00.000002' },
+    { id: 4, data_reserva: '2026-11-22', hora_inicio: '08:15:30.123456', hora_fim: '09:15:30.123456' }]
+  solicitacoesResposta = [r]
+  montarAgendaReal()
+  await screen.findByText('Solicitação sem identificador')
+  assert.ok(screen.getByRole('heading', { name: 'Espaço ID 2' }))
+  assert.ok(screen.getByText('Uso incompatível com a finalidade do espaço.'))
+  assert.ok(screen.getByText('Duração: 1 h 0,000001 s'))
+  assert.ok(screen.getByText('08:15:30.123456 – 09:15:30.123456'))
+  const datas = screen.getAllByRole('article')[0].querySelectorAll('time')
+  assert.deepEqual([...datas].map(t => t.getAttribute('datetime')), ['2026-11-22', '2026-11-23'])
+})
+
+test('agenda ordena pelo primeiro intervalo cronológico, horário e ID', async () => {
+  const a = solicitacaoApiTeste(8), b = solicitacaoApiTeste(4), c = solicitacaoApiTeste(3)
+  a.horarios = [{ ...a.horarios[0], data_reserva: '2026-11-24' }, { ...a.horarios[0], id: 44, hora_inicio: '08:00:00', hora_fim: '09:00:00' }]
+  b.horarios[0].hora_inicio = '10:00:00'; c.horarios[0].hora_inicio = '10:00:00'
+  solicitacoesResposta = [b, a, c]
+  montarAgendaReal()
+  await screen.findByText('Solicitação #8')
+  assert.deepEqual(screen.getAllByRole('article').map(a => a.querySelector('.agenda-card__id')?.textContent), ['Solicitação #8', 'Solicitação #3', 'Solicitação #4'])
+})
+
+test('agenda anuncia carregamento e limpa resultados durante atualização manual', async () => {
+  solicitacoesResposta = [solicitacaoApiTeste()]
+  montarAgendaReal()
+  await screen.findByText('Solicitação #3')
+  const fetchValido = globalThis.fetch
+  let concluir: ((r: Response) => void) | undefined
+  globalThis.fetch = async (input, options) => new URL(String(input)).pathname === '/solicitacoes/'
+    ? new Promise<Response>(resolve => { concluir = resolve }) : fetchValido(input, options)
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Atualizar' }))
+  assert.ok(screen.getByText('Carregando suas solicitações...'))
+  assert.equal(screen.queryByText('Solicitação #3'), null)
+  assert.ok(screen.getByRole('button', { name: 'Atualizar' }).hasAttribute('disabled'))
+  concluir!(Response.json([solicitacaoApiTeste(5)]))
+  await screen.findByText('Solicitação #5')
+})
+
+test('agenda mostra erro de rede e permite nova tentativa somente de leitura', async () => {
+  const fetchValido = globalThis.fetch
+  globalThis.fetch = async (input, options) => {
+    if (new URL(String(input)).pathname === '/solicitacoes/') throw Error('offline')
+    return fetchValido(input, options)
+  }
+  montarAgendaReal()
+  await screen.findByRole('alert')
+  assert.equal(screen.queryByRole('article'), null)
+  globalThis.fetch = fetchValido
+  solicitacoesResposta = [solicitacaoApiTeste()]
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Tentar novamente' }))
+  await screen.findByText('Solicitação #3')
+  assert.ok(chamadas.every(c => c.method === 'GET'))
+})
+
+test('logout local limpa imediatamente os cartões sem fazer requisição de escrita', async () => {
+  solicitacoesResposta = [solicitacaoApiTeste()]
+  montarAgendaReal()
+  await screen.findByText('Solicitação #3')
+  await act(async () => { encerrarSessao() })
+  assert.equal(screen.queryByRole('article'), null)
+  assert.ok(screen.getByRole('link', { name: 'Entrar novamente' }))
+  assert.ok(chamadas.every(c => c.method === 'GET'))
+})
+
+test('troca de usuário oculta dados antigos antes da resposta da nova consulta', async () => {
+  solicitacoesResposta = [solicitacaoApiTeste(), solicitacaoApiTeste(5, 99)]
+  montarAgendaReal()
+  await screen.findByText('Solicitação #3')
+  await act(async () => { sessionStorage.setItem('labagenda.usuario', JSON.stringify({ ...usuario, id: 99 })) })
+  assert.equal(screen.queryByText('Solicitação #3'), null)
+  await screen.findByText('Solicitação #5')
+  assert.equal(screen.getAllByRole('article').length, 1)
+})
+
+test('resposta antiga após troca de usuário é descartada mesmo quando fetch ignora abort', async () => {
+  const fetchValido = globalThis.fetch
+  let concluir: ((r: Response) => void) | undefined
+  let signal: AbortSignal | undefined
+  let numero = 0
+  globalThis.fetch = async (input, options) => {
+    if (new URL(String(input)).pathname === '/solicitacoes/') {
+      if (++numero === 1) { signal = options?.signal as AbortSignal; return new Promise<Response>(resolve => { concluir = resolve }) }
+      return Response.json([solicitacaoApiTeste(5, 99)])
+    }
+    return fetchValido(input, options)
+  }
+  montarAgendaReal()
+  await waitFor(() => assert.ok(concluir))
+  await act(async () => { sessionStorage.setItem('labagenda.usuario', JSON.stringify({ ...usuario, id: 99 })) })
+  await screen.findByText('Solicitação #5')
+  assert.equal(signal?.aborted, true)
+  await act(async () => { concluir!(Response.json([solicitacaoApiTeste()])) })
+  assert.equal(screen.queryByText('Solicitação #3'), null)
+})
+
+test('desmontar agenda cancela consulta e restaura os observadores de armazenamento', async () => {
+  const proto = Object.getPrototypeOf(window.sessionStorage)
+  const original = { setItem: proto.setItem, removeItem: proto.removeItem, clear: proto.clear }
+  const fetchValido = globalThis.fetch
+  let concluir: ((r: Response) => void) | undefined
+  let signal: AbortSignal | undefined
+  globalThis.fetch = async (input, options) => new URL(String(input)).pathname === '/solicitacoes/'
+    ? (signal = options?.signal as AbortSignal, new Promise<Response>(resolve => { concluir = resolve })) : fetchValido(input, options)
+  const tela = montarAgendaReal()
+  await waitFor(() => assert.ok(concluir))
+  tela.unmount()
+  assert.equal(signal?.aborted, true)
+  assert.equal(proto.setItem, original.setItem)
+  assert.equal(proto.removeItem, original.removeItem)
+  assert.equal(proto.clear, original.clear)
+  await act(async () => { concluir!(Response.json([solicitacaoApiTeste()])) })
+})
+
+test('sessão recusada na agenda encerra apresentação sem restaurar cartões', async () => {
+  const fetchValido = globalThis.fetch
+  globalThis.fetch = async (input, options) => ['/solicitacoes/', '/usuarios/refresh'].includes(new URL(String(input)).pathname)
+    ? Response.json({ detail: 'Sessão expirada' }, { status: 401 }) : fetchValido(input, options)
+  montarAgendaReal()
+  await screen.findByRole('link', { name: 'Entrar novamente' })
+  assert.equal(screen.queryByRole('article'), null)
+})
+
+test('confirmação preservada abre histórico com nova consulta sem repetir POST', async () => {
+  autenticado = true
+  sessionStorage.setItem('labagenda.access_token', jwt())
+  sessionStorage.setItem('labagenda.usuario', JSON.stringify(usuario))
+  solicitacoesResposta = [solicitacaoApiTeste()]
+  const resposta = { ...solicitacaoApiTeste(), id: 3, horarios: [{ data_reserva: '2026-11-22', hora_inicio: '13:00:00', hora_fim: '14:00:00' }] }
+  const caminho = '/laboratorios/2/agendamento/detalhes?data=2026-11-22&inicio=13:00&fim=14:00'
+  render(<MemoryRouter initialEntries={[{ pathname: caminho.split('?')[0], search: '?' + caminho.split('?')[1], state: {
+    envioSolicitacao: { escopo: JSON.stringify([1, '2', '2026-11-22', '13:00', '14:00']), estado: { tipo: 'sucesso', resposta, laboratorio: 'Sala de reuniões (seed)' } },
+  } }]}><App /></MemoryRouter>)
+  await screen.findByText('Solicitação enviada e aguardando análise.')
+  await userEvent.setup().click(screen.getByRole('link', { name: 'Consultar minhas solicitações' }))
+  await screen.findByText('Solicitação #3')
+  assert.ok(getsAgenda().length >= 1)
+  assert.equal(postsCriacao().length, 0)
+  assert.ok(chamadas.every(c => c.method === 'GET'))
+})
+
+
+test('D5C personalizado inválido anuncia erro, oculta resultados e não consulta HTTP ao filtrar', async () => {
+  solicitacoesResposta = [solicitacaoApiTeste()]
+  montarAgendaReal()
+  await screen.findByText('Solicitação #3')
+  const user = userEvent.setup()
+  const antes = getsAgenda().length
+  await user.selectOptions(screen.getByLabelText('Período de utilização'), 'personalizado')
+  assert.equal(screen.queryByRole('article'), null)
+  assert.ok(screen.getByRole('alert').textContent?.includes('Informe a data inicial'))
+  const inicio = screen.getByLabelText('Data inicial')
+  assert.equal(inicio.getAttribute('aria-invalid'), 'true')
+  assert.equal(document.getElementById(inicio.getAttribute('aria-describedby')!)?.getAttribute('role'), 'alert')
+  await user.type(inicio, '2026-11-23')
+  await user.type(screen.getByLabelText('Data final'), '2026-11-22')
+  assert.match(screen.getByRole('alert').textContent!, /igual ou posterior/)
+  await user.clear(inicio)
+  await user.type(inicio, '2026-11-22')
+  await screen.findByText('Solicitação #3')
+  await user.selectOptions(screen.getByLabelText('Ordenação'), 'decrescente')
+  assert.equal(getsAgenda().length, antes)
+  assert.ok(screen.getByRole('status').textContent?.includes('decrescente'))
+})
+
+test('D5C mudança do dia local atualiza a tela aberta sem novo GET', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 10, 19, 23, 59, 59).getTime() })
+  const hoje = solicitacaoApiTeste()
+  hoje.horarios[0].data_reserva = '2026-11-19'
+  solicitacoesResposta = [hoje]
+  montarAgendaReal()
+  await screen.findByText('Solicitação #3')
+  await userEvent.setup().selectOptions(screen.getByLabelText('Período de utilização'), 'passados')
+  assert.equal(screen.queryByRole('article'), null)
+  const antes = getsAgenda().length
+  await act(async () => { t.mock.timers.tick(2000) })
+  await waitFor(() => assert.ok(screen.queryByText('Solicitação #3')), { timeout: 2500 })
+  assert.equal(getsAgenda().length, antes)
 })

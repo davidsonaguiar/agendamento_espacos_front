@@ -1,5 +1,7 @@
+import type { SolicitacaoConsulta } from '../types/solicitacaoConsulta'
+import { validarListaSolicitacoes } from '../data/solicitacoesRecebidas'
 import { requisitar, ErroHttp } from './http'
-import { verificarSessao, obterTokenAcesso, obterUsuarioAutenticado } from './autenticacao'
+import { verificarSessao, obterTokenAcesso, obterUsuarioAutenticado, tokenExpirou, renovarSessao, encerrarSessao } from './autenticacao'
 import { inicioFuturo, microsHora } from '../data/disponibilidade'
 import { validarFinalidadeSolicitacao } from '../data/solicitacaoPayload'
 import type { CriarSolicitacaoEspaco, SolicitacaoCriada } from '../types/solicitacaoIntegrada'
@@ -81,4 +83,65 @@ export async function criarSolicitacao(
     }
     throw new ErroCriacaoSolicitacao('Não foi possível confirmar o resultado do envio.', 'incerto', erro instanceof ErroHttp ? erro.status : undefined)
   }
+}
+
+
+/** Cancela só a espera deste consumidor, sem interromper o refresh compartilhado. */
+function aguardarLeitura<T>(promessa: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promessa
+  return new Promise((resolve, reject) => {
+    const cancelar = () => reject(signal.reason)
+    if (signal.aborted) cancelar()
+    else signal.addEventListener('abort', cancelar, { once: true })
+    void promessa.then(resolve, reject).finally(() => signal.removeEventListener('abort', cancelar))
+  })
+}
+
+/** GET próprio: a seleção de apresentação não substitui a autorização do backend.
+ * Sem cache ou ID vindo de URL. O chamador deve limpar sua lista ao mudar a sessão.
+ * Somente esta leitura pode repetir GET uma vez; a criação acima não é repetida.
+ */
+export async function listarMinhasSolicitacoes(signal?: AbortSignal): Promise<SolicitacaoConsulta[]> {
+  signal?.throwIfAborted()
+  const usuario = obterUsuarioAutenticado()
+  const sessaoInvalida = () => new ErroHttp('http', 'Sua sessão expirou ou mudou. Entre novamente antes de consultar suas solicitações.', 401)
+  if (!usuario?.ativo || !Number.isSafeInteger(usuario.id) || usuario.id <= 0) throw sessaoInvalida()
+  const idUsuario = usuario.id
+  let token = obterTokenAcesso()
+  const conferir = () => {
+    signal?.throwIfAborted()
+    const atual = obterUsuarioAutenticado()
+    if (!atual?.ativo || atual.id !== idUsuario || obterTokenAcesso() !== token) throw sessaoInvalida()
+  }
+  let renovou = false
+  const renovar = async () => {
+    conferir()
+    renovou = true
+    const nova = await aguardarLeitura(renovarSessao(), signal)
+    signal?.throwIfAborted()
+    if (!nova || nova.usuario.id !== idUsuario || obterUsuarioAutenticado()?.id !== idUsuario
+      || !obterUsuarioAutenticado()?.ativo || obterTokenAcesso() !== nova.access_token) throw sessaoInvalida()
+    token = nova.access_token
+  }
+  if (!token || tokenExpirou(token)) await renovar()
+  conferir()
+  if (!token) throw sessaoInvalida()
+  const ler = () => requisitar<unknown>('/solicitacoes/', { method: 'GET', token: token!, signal, statusEsperado: 200 })
+  let resposta: unknown
+  try { resposta = await ler() } catch (erro) {
+    conferir()
+    if (!(erro instanceof ErroHttp) || erro.status !== 401) throw erro
+    if (renovou) { encerrarSessao(); throw sessaoInvalida() }
+    await renovar()
+    conferir()
+    try { resposta = await ler() } catch (repetido) {
+      conferir()
+      if (repetido instanceof ErroHttp && repetido.status === 401) { encerrarSessao(); throw sessaoInvalida() }
+      throw repetido
+    }
+  }
+  conferir()
+  const resultado = validarListaSolicitacoes(resposta).filter(s => s.id_solicitante === idUsuario)
+  conferir()
+  return resultado
 }

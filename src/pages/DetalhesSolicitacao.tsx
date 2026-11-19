@@ -74,6 +74,7 @@ export function DetalhesSolicitacao({ id }: { id: string }) {
         <div><dt>Finalidade</dt><dd>{resposta.finalidade}</dd></div>
       </dl>
       <p>Este envio não confirma reserva de horário. A solicitação segue o processo de análise.</p>
+      <Link to="/meus-agendamentos">Consultar minhas solicitações</Link>
       <Link to="/">Voltar ao catálogo</Link>
     </main></>
   }
@@ -82,7 +83,7 @@ export function DetalhesSolicitacao({ id }: { id: string }) {
     <p className="booking-notice" role="note">A disponibilidade pode mudar. Somente a resposta de criação confirma o registro da solicitação; o envio não garante aprovação ou reserva.</p>
         {envio.ocupado && <p role="status">{envio.estado.tipo === 'verificando' ? 'Revalidando disponibilidade e sessão antes do envio...' : 'Enviando solicitação...'}</p>}
         {envio.estado.tipo === 'erro' && <section role="alert"><p>{envio.estado.mensagem}</p>
-          {envio.estado.incerto ? <><p>A solicitação pode ter sido registrada. Não reenvie automaticamente.</p><p>O histórico desta aplicação ainda é demonstrativo. Confira com a coordenação; quando o histórico real estiver integrado, consulte-o antes de qualquer nova tentativa.</p></>
+          {envio.estado.incerto ? <><p>A solicitação pode ter sido registrada. Não reenvie automaticamente.</p><p>Consulte suas solicitações antes de qualquer nova tentativa. Se o resultado continuar indefinido, confira com a coordenação.</p><Link to="/meus-agendamentos">Consultar minhas solicitações</Link></>
             : <p>Os dados foram preservados. Corrija o problema antes de tentar novamente.</p>}
         </section>}
     <p id={envioAjudaId} className="booking-send-feedback" role="status" aria-live="polite">{motivoBloqueio || 'Dados revisados. Você pode enviar a solicitação para análise.'}</p>
