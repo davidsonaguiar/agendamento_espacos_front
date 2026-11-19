@@ -12,8 +12,8 @@
     "test:components": "node --import ./tests/register-dom.mjs --test tests/*.test.tsx",
     "test:e2e": "playwright test",
     "typecheck": "tsc -p tsconfig.app.json --noEmit --incremental false && tsc -p tsconfig.node.json --noEmit --incremental false && npm run typecheck:tests",
-    "check": "npm test && npm run typecheck && npm run build",
-    "typecheck:tests": "tsc --ignoreConfig --noEmit --skipLibCheck --module esnext --moduleResolution bundler --target es2023 --jsx react-jsx --types node,vite/client --lib es2023,dom tests/componentes.test.tsx tests/e2e/autenticacao.spec.ts playwright.config.ts"
+    "check": "npm test && npm run typecheck && npm run build && npm run test:e2e",
+    "typecheck:tests": "tsc --ignoreConfig --noEmit --skipLibCheck --module esnext --moduleResolution bundler --target es2023 --jsx react-jsx --types node,vite/client --lib es2023,dom tests/componentes.test.tsx tests/e2e/autenticacao.spec.ts tests/e2e/responsividade.spec.ts playwright.config.ts"
   },
   "dependencies": {
     "react": "^19.3.1",

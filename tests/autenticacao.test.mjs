@@ -464,3 +464,25 @@ test('cache de usuário rejeita JSON inválido e perfis globais antigos', () => 
     assert.equal(api.obterUsuarioAutenticado(), null)
   }
 })
+
+test('401 atrasado usa o token já renovado por outro consumidor', async () => {
+  storage.setItem('labagenda.access_token', 'anterior')
+  const consultaAntiga = Promise.withResolvers()
+  let rotacoes = 0
+  const autorizacoes = []
+  globalThis.fetch = async (url, opcoes) => {
+    if (url.endsWith('/refresh')) {
+      rotacoes++
+      return resposta(200, respostaLogin)
+    }
+    const bearer = opcoes.headers.get('Authorization')
+    autorizacoes.push(bearer)
+    return bearer === 'Bearer anterior' ? consultaAntiga.promise : resposta(200, dadosUsuario)
+  }
+  const verificacao = api.verificarSessao()
+  await api.renovarSessao()
+  consultaAntiga.resolve(resposta(401, {}))
+  assert.equal((await verificacao)?.id, dadosUsuario.id)
+  assert.deepEqual(autorizacoes, ['Bearer anterior', 'Bearer token-de-teste'])
+  assert.equal(rotacoes, 1)
+})

@@ -48,7 +48,7 @@ export function CadastroServidor() {
         <h2>Criar conta</h2>
         <p>Cadastro de membros da comunidade institucional.</p>
       </div>
-      <p className="login-info">O cadastro público cria uma conta de membro da comunidade institucional.</p>
+      <p className="login-info">O cadastro público gera o perfil Membro. Permissões de coordenação e monitoria são atribuídas por espaço pelos responsáveis.</p>
       <form className="login-form" onSubmit={handleSubmit}>
         <label className="login-field"><span>Nome completo</span>
           <input required minLength={3} maxLength={150} autoComplete="name" value={nome} onChange={(e: ChangeEvent<HTMLInputElement>) => setNome(e.target.value)} disabled={carregando} placeholder="Seu nome completo" /></label>

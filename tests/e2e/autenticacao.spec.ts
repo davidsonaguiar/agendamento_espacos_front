@@ -9,7 +9,7 @@ const espacoApi = {
   recursos: [{ id: 501, nome: 'Impressora 3D', tipo: 'Equipamento', autorizacao_necessaria: true, disponibilidade: false, reserva_independente: true, id_espaco: 77 }],
   horarios_funcionamento: [], pausas_funcionamento: [], usuarios_vinculados: [],
 }
-const token = (segundos = 900) => `a.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + segundos })).toString('base64url')}.c`
+const token = (segundos = 900, agora = Date.now()) => `a.${Buffer.from(JSON.stringify({ exp: Math.floor(agora / 1000) + segundos })).toString('base64url')}.c`
 
 async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInvalido?: boolean; logoutFalha?: boolean; expiraEm?: number } = {}) {
   let autenticado = opcoes.autenticado ?? false
@@ -22,11 +22,13 @@ async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInva
     if (caminho === '/usuarios/login') {
       if (opcoes.loginInvalido) return json(401, { detail: 'Credenciais inválidas.' })
       autenticado = true
-      return json(200, { access_token: token(opcoes.expiraEm), token_type: 'bearer', usuario }, { 'set-cookie': 'refresh_token=simulado; HttpOnly; Path=/usuarios; SameSite=Lax' })
+      return json(200, { access_token: token(opcoes.expiraEm, await page.evaluate(() => Date.now())), token_type: 'bearer', usuario }, { 'set-cookie': 'refresh_token=simulado; HttpOnly; Path=/usuarios; SameSite=Lax' })
     }
     if (caminho === '/usuarios/refresh') return autenticado
-      ? json(200, { access_token: token(), token_type: 'bearer', usuario })
+      ? json(200, { access_token: token(900, await page.evaluate(() => Date.now())), token_type: 'bearer', usuario })
       : json(401, { detail: 'Sessão expirada' })
+    if (caminho === '/usuarios/recuperar-senha') return json(202, { detail: 'Instruções enviadas' })
+    if (caminho === '/usuarios/redefinir-senha') return route.fulfill({ status: 204 })
     if (caminho === '/usuarios/me') return autenticado ? json(200, usuario) : json(401, {})
     if (caminho === '/usuarios/') return json(201, usuario)
     if (caminho === '/usuarios/logout') {
@@ -125,13 +127,23 @@ test('cookie recupera sessão após recarregar sem access token local', async ({
 })
 
 test('renova automaticamente antes da expiração com página aberta', async ({ page }) => {
-  await page.clock.install()
+  await page.clock.install({ time: new Date('2026-01-01T10:00:00Z') })
+  await page.clock.pauseAt(new Date('2026-01-01T10:01:00Z'))
   const chamadas = await simularApi(page, { expiraEm: 90 })
   await page.goto('/login')
   await entrar(page)
   await expect(page.getByRole('button', { name: 'Sair', exact: true })).toBeVisible()
-  await page.clock.fastForward(61_000)
-  await expect.poll(() => chamadas.filter(c => c.caminho === '/usuarios/refresh').length).toBe(1)
+  const inicial = await page.evaluate(() => sessionStorage.getItem('labagenda.access_token'))
+  await page.clock.fastForward(59_000)
+  expect(chamadas.filter(c => c.caminho === '/usuarios/refresh')).toHaveLength(0)
+  await page.clock.fastForward(1_000)
+  await expect.poll(() => chamadas.filter(c => c.caminho === '/usuarios/me').length).toBe(2)
+  const renovado = await page.evaluate(() => sessionStorage.getItem('labagenda.access_token'))
+  expect(renovado).toBeTruthy()
+  expect(renovado).not.toBe(inicial)
+  expect(chamadas.filter(c => c.caminho === '/usuarios/me').at(-1)?.authorization).toBe('Bearer ' + renovado)
+  await page.clock.fastForward(60_000)
+  expect(chamadas.filter(c => c.caminho === '/usuarios/refresh')).toHaveLength(1)
   await expect(page.getByRole('heading', { name: 'Encontre o laboratório ideal' })).toBeVisible()
 })
 
@@ -170,15 +182,14 @@ test('indisponibilidade da API permite tentar novamente sem mostrar conteúdo pr
   await expect(page.getByRole('heading', { name: 'Agendamentos', exact: true })).toBeVisible()
 })
 
-test('recuperação de senha informa limite da API e login cabe em tela móvel', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
+test('recuperação de senha informa quando API não oferece endpoint', async ({ page }) => {
+  await page.route('**/usuarios/recuperar-senha', route => route.fulfill({ status: 404, json: { detail: 'Not Found' } }))
   await page.goto('/recuperar-senha')
-  await expect(page.getByText(/A recuperação automática de senha ainda não está disponível/)).toBeVisible()
-  await page.getByRole('link', { name: 'Voltar ao login' }).click()
-  await expect(page.getByRole('button', { name: 'Entrar', exact: true })).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.screenshot({ path: 'test-results/login-mobile.png', fullPage: true })
+  await page.getByLabel('E-mail cadastrado').fill('membro@ifal.edu.br')
+  await page.getByRole('button', { name: 'Enviar link de recuperação' }).click()
+  await expect(page.getByRole('alert')).toContainText('ainda não está disponível nesta versão da API')
 })
+
 
 test('catálogo autenticado busca recurso sem apresentar fixture ou reserva independente', async ({ page }) => {
   const chamadas = await simularApi(page, { autenticado: true })
@@ -319,18 +330,43 @@ test('prévia integrada revalida seleção pela API e bloqueia intervalo inváli
 })
 
 test('catálogo recupera 401 com refresh e repete somente a página que falhou', async ({ page }) => {
-  const chamadas = await simularApi(page, { autenticado: true })
-  let consultas = 0
+  await simularApi(page, { autenticado: true })
+  let rotacoes = 0
+  const tokens: string[] = []
+  await page.route('**/usuarios/refresh', async route => {
+    expect(route.request().method()).toBe('POST')
+    const access_token = token(900 + ++rotacoes, await page.evaluate(() => Date.now()))
+    tokens.push(access_token)
+    return route.fulfill({ status: 200, json: { access_token, token_type: 'bearer', usuario } })
+  })
+  const autorizacoes: string[] = []
+  const primeirasPaginasEntregues: number[] = []
+  page.on('response', response => {
+    const url = new URL(response.url())
+    if (url.pathname === '/espacos/' && url.searchParams.get('skip') === '0' && response.status() === 200) primeirasPaginasEntregues.push(0)
+  })
+  // StrictMode pode cancelar a primeira carga. O 401 ocorre na segunda página,
+  // alcançada apenas pela carga ativa; cancelamento inicial não conta como retry.
   await page.route('**/espacos/**', async route => {
-    consultas++
-    if (consultas === 1) return route.fulfill({ status: 401, json: { detail: 'Access token expirado' } })
-    return route.fulfill({ status: 200, json: [espacoApi] })
+    const request = route.request()
+    const url = new URL(request.url())
+    expect(request.method()).toBe('GET')
+    expect(url.searchParams.get('limit')).toBe('100')
+    if (url.searchParams.get('skip') === '0') {
+      return route.fulfill({ status: 200, json: Array.from({ length: 100 }, (_, i) => ({ ...espacoApi, id: 1000 + i, nome: `Espaço paginado ${i}`, recursos: [] })) })
+    }
+    expect(url.searchParams.get('skip')).toBe('100')
+    autorizacoes.push(request.headers().authorization)
+    return route.fulfill(autorizacoes.length === 1
+      ? { status: 401, json: { detail: 'Access token expirado' } }
+      : { status: 200, json: [espacoApi] })
   })
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Laboratório API 77' })).toBeVisible()
-  expect(consultas).toBe(2)
-  // Recuperação inicial por cookie e renovação provocada pelo 401 do catálogo.
-  expect(chamadas.filter(c => c.caminho === '/usuarios/refresh')).toHaveLength(2)
+  await expect(page.getByRole('heading', { name: 'Laboratório API 77', exact: true })).toBeVisible()
+  expect(rotacoes).toBe(2)
+  expect(autorizacoes).toEqual([`Bearer ${tokens[0]}`, `Bearer ${tokens[1]}`])
+  expect(tokens[0]).not.toBe(tokens[1])
+  expect(primeirasPaginasEntregues).toHaveLength(1)
 })
 
 
@@ -463,4 +499,55 @@ test.describe('D5C filtros e apresentação', () => {
     await expect(page.getByLabel('Data final')).toBeVisible()
     await page.screenshot({ path: 'test-results/agenda-d5c-zoom-200.png', fullPage: true })
   })
+})
+
+test('recuperação de senha solicita link e login cabe em tela móvel', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await simularApi(page)
+  await page.goto('/recuperar-senha')
+  await page.getByLabel('E-mail cadastrado').fill('membro@ifal.edu.br')
+  await page.getByRole('button', { name: 'Enviar link de recuperação' }).click()
+  await expect(page.getByText(/Se o e-mail estiver cadastrado e ativo/)).toBeVisible()
+  await page.getByRole('link', { name: 'Voltar ao login' }).click()
+  await expect(page.getByRole('button', { name: 'Entrar', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: 'test-results/login-mobile.png', fullPage: true })
+})
+
+test('redefinição via token envia nova senha e remove token do endereço', async ({ page }) => {
+  const chamadas = await simularApi(page)
+  await page.goto('/recuperar-senha?token=' + 't'.repeat(43))
+  await page.getByLabel('Nova senha (mínimo 8 caracteres)').fill('SenhaNova123!')
+  await page.getByLabel('Confirmar nova senha').fill('SenhaNova123!')
+  await page.getByRole('button', { name: 'Salvar nova senha' }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  await expect(page.getByText('Senha redefinida com sucesso. Entre com a nova senha.')).toBeVisible()
+  expect(chamadas.find(c => c.caminho === '/usuarios/redefinir-senha')?.corpo).toEqual({ token: 't'.repeat(43), nova_senha: 'SenhaNova123!' })
+})
+
+test('retorno à aba revalida uma sessão revogada e volta ao login', async ({ page }) => {
+  const chamadas = await simularApi(page, { autenticado: true })
+  await page.goto('/meus-agendamentos')
+  await expect(page.getByRole('button', { name: 'Sair', exact: true })).toBeVisible()
+  await page.route('**/usuarios/me', route => route.fulfill({ status: 401, json: {} }))
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+  await expect(page).toHaveURL(/\/login$/)
+  expect(chamadas.filter(c => c.caminho === '/usuarios/refresh')).toHaveLength(2)
+  expect(await page.evaluate(() => sessionStorage.getItem('labagenda.access_token'))).toBeNull()
+})
+
+test('link expirado permite solicitar outro sem levar o erro e a senha', async ({ page }) => {
+  await page.route('**/usuarios/redefinir-senha', route => route.fulfill({ status: 400, json: {} }))
+  await page.goto('/recuperar-senha?token=' + 't'.repeat(43))
+  await page.getByLabel('Nova senha (mínimo 8 caracteres)').fill('Teste1234!')
+  await page.getByLabel('Confirmar nova senha').fill('Teste12345!')
+  await page.getByRole('button', { name: 'Salvar nova senha' }).click()
+  await expect(page.getByRole('alert')).toHaveText('As senhas não coincidem.')
+  await page.getByLabel('Confirmar nova senha').fill('Teste1234!')
+  await page.getByRole('button', { name: 'Salvar nova senha' }).click()
+  await expect(page.getByRole('alert')).toContainText('inválido ou expirado')
+  await page.getByRole('link', { name: 'Solicitar outro link' }).click()
+  await expect(page).toHaveURL(/\/recuperar-senha$/)
+  await expect(page.getByLabel('E-mail cadastrado')).toBeEmpty()
+  await expect(page.getByRole('alert')).toHaveCount(0)
 })

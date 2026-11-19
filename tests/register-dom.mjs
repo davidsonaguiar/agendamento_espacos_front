@@ -10,7 +10,9 @@ globalThis.React = React
 register({ tsconfig: './tsconfig.app.json' })
 registerHooks({
   load(url, context, nextLoad) {
-    if (url.endsWith('.module.css')) return { format: 'module', source: 'export default new Proxy({}, { get: (_, key) => key })', shortCircuit: true }
+    if (url.endsWith('.module.css')) {
+      return { format: 'module', source: 'export default new Proxy({}, { get: (_, classe) => classe })', shortCircuit: true }
+    }
     if (url.endsWith('.css')) return { format: 'module', source: '', shortCircuit: true }
     if (url.endsWith('/services/http.ts')) {
       return { ...nextLoad(url, context), source: readFileSync(new URL(url), 'utf8').replace('import.meta.env.VITE_API_URL', "'http://localhost:8000'"), format: 'module-typescript' }

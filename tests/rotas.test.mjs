@@ -49,7 +49,7 @@ async function executarHooksB3(caminho, nome, modulos) {
   const chave = `__labagendaHooksB3_${++executorIdB3}`
   const estados = [], efeitos = [], timers = new Map()
   let indiceEstado = 0, indiceEfeito = 0, montado = true, agendado = false, renderizar
-  const ambiente = { modulos, window: new EventTarget() }
+  const ambiente = { modulos, window: new EventTarget(), document: Object.assign(new EventTarget(), { visibilityState: 'visible' }) }
   ambiente.setTimeout = (callback, atraso) => { const id = {}; timers.set(id, { callback, atraso }); return id }
   ambiente.clearTimeout = id => timers.delete(id)
   ambiente.modulos.react = {
@@ -90,11 +90,11 @@ async function executarHooksB3(caminho, nome, modulos) {
     const exports = Object.keys(mock).map(nome => `export const ${nome} = globalThis['${chave}'].modulos[${JSON.stringify(referencia)}].${nome}`).join('\n')
     return `from 'data:text/javascript;base64,${Buffer.from(exports).toString('base64')}'`
   })
-  codigo = `const window = globalThis['${chave}'].window; const setTimeout = globalThis['${chave}'].setTimeout; const clearTimeout = globalThis['${chave}'].clearTimeout;\n` + codigo
+  codigo = `const window = globalThis['${chave}'].window; const document = globalThis['${chave}'].document; const setTimeout = globalThis['${chave}'].setTimeout; const clearTimeout = globalThis['${chave}'].clearTimeout;\n` + codigo
   const moduloTela = await import(`data:text/javascript;base64,${Buffer.from(codigo).toString('base64')}`)
   const componente = moduloTela[nome]
   const controle = {
-    atual: null, exports: moduloTela, timers, eventos: ambiente.window,
+    atual: null, exports: moduloTela, timers, eventos: ambiente.window, documento: ambiente.document,
     render() { renderizar() },
     desmontar() { montado = false; efeitos.forEach(efeito => efeito.limpar?.()); delete globalThis[chave] },
     async flush() { await new Promise(resolve => setImmediate(resolve)) },
@@ -114,7 +114,7 @@ async function montarGuardB3(t, verificar) {
   const local = { pathname: '/laboratorios/77', search: '?origem=catalogo' }
   const guard = await executarHooksB3('../src/components/RotaProtegida.tsx', 'RotaProtegida', {
     'react-router-dom': { Link: () => null, useLocation: () => local, Navigate: function Navigate() {}, Outlet: function Outlet() {} },
-    '../services/autenticacao': { verificarSessao: verificar, obterTokenAcesso: () => 'token', obterExpiracaoToken: () => Date.now() + 90_000 },
+    '../services/autenticacao': { ANTECEDENCIA_RENOVACAO_MS: 30_000, verificarSessao: verificar, obterTokenAcesso: () => 'token', obterExpiracaoToken: () => Date.now() + 90_000 },
   })
   t.after(() => guard.desmontar())
   return { guard, local }
@@ -329,4 +329,23 @@ test('/admin possui guard dedicado que exige Administrador', () => {
   assert.equal(matches[0].route.element.type.name, 'RotaProtegida')
   assert.equal(matches[0].route.element.props.somenteAdministrador, true)
   assert.equal(matches[1].route.element.type.name, 'PainelAdmin')
+})
+
+
+test('guard revalida somente ao tornar aba visível e remove visibilitychange ao desmontar', async t => {
+  let chamadas = 0
+  const { guard } = await montarGuardB3(t, async () => { chamadas++; return { id: 1 } })
+  await guard.flush()
+  guard.documento.visibilityState = 'hidden'
+  guard.documento.dispatchEvent(new Event('visibilitychange'))
+  assert.equal(chamadas, 1)
+  guard.documento.visibilityState = 'visible'
+  guard.documento.dispatchEvent(new Event('visibilitychange'))
+  guard.eventos.dispatchEvent(new Event('focus'))
+  await guard.flush()
+  assert.equal(chamadas, 2)
+  guard.desmontar()
+  guard.documento.dispatchEvent(new Event('visibilitychange'))
+  assert.equal(chamadas, 2)
+  assert.equal(guard.timers.size, 0)
 })

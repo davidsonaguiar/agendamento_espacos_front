@@ -92,7 +92,7 @@ export async function requisitar<T = unknown>(
     throw new ErroHttp('http', mensagemErro(corpo, resposta.status), resposta.status, corpo)
   }
   if (opcoes.statusEsperado !== undefined && resposta.status !== opcoes.statusEsperado) {
-    throw new ErroHttp('resposta', 'A API retornou um status de sucesso inesperado.', resposta.status)
+    throw new ErroHttp('resposta', 'A API retornou um status inesperado.', resposta.status)
   }
   if (!jsonValido) {
     throw new ErroHttp('resposta', 'A API retornou uma resposta que não é JSON válido.', resposta.status, corpo)
