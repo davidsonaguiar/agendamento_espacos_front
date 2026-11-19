@@ -141,6 +141,10 @@
   opacity: 1;
 }
 
+.login-page :is(input, button, a[href]) {
+  scroll-margin-block: 8px;
+}
+
 .login-field input:focus {
   border-color: var(--login-brand);
   box-shadow: 0 0 0 3px rgba(11, 107, 83, 0.12);
