@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Cabecalho } from '../components/Cabecalho'
 import { duracaoMinutos } from '../data/horariosAgendamentoDemonstrativos'
 import { laboratoriosFicticios } from '../data/laboratorios'
 import { criarPayloadSolicitacao, validarFinalidadeSolicitacao, type PayloadSolicitacaoEspaco } from '../data/solicitacaoPayload'
 import { parametrosSelecao, parseData, selecaoDemonstrativaValida } from '../data/selecaoAgendamento'
+import { obterUsuarioAutenticado } from '../services/autenticacao'
+import { criarSolicitacaoSimulada, simuladorLocalAtivo } from '../services/simuladorLocal'
 
 export function DetalhesSolicitacao({ id }: { id: string }) {
   const [params] = useSearchParams()
@@ -13,8 +15,11 @@ export function DetalhesSolicitacao({ id }: { id: string }) {
   const [modo, setModo] = useState<'formulario' | 'previa'>('formulario')
   const [payloadPreview, setPayloadPreview] = useState<PayloadSolicitacaoEspaco | null>(null)
   const [erroPayload, setErroPayload] = useState('')
+  const [erroEnvio, setErroEnvio] = useState('')
+  const [enviando, setEnviando] = useState(false)
   const finalidadeId = useId()
   const tituloModoRef = useRef<HTMLHeadingElement>(null)
+  const navigate = useNavigate()
   const lab = laboratoriosFicticios.find(item => String(item.id) === id)
   const valida = Boolean(lab?.disponivel && selecaoDemonstrativaValida(lab.id, params))
   const data = parseData(params.get('data'))
@@ -49,6 +54,25 @@ export function DetalhesSolicitacao({ id }: { id: string }) {
       setModo('previa')
     } catch {
       setErroPayload('Não foi possível preparar a prévia. Confira os dados da seleção e da finalidade.')
+    }
+  }
+
+  const enviarSolicitacaoLocal = () => {
+    const usuario = obterUsuarioAutenticado()
+    if (!simuladorLocalAtivo || !payloadPreview || !usuario) {
+      setErroEnvio('Não foi possível registrar a solicitação no simulador local. Confira a sessão e tente novamente.')
+      return
+    }
+
+    setEnviando(true)
+    setErroEnvio('')
+    try {
+      criarSolicitacaoSimulada(payloadPreview, usuario)
+      navigate('/meus-agendamentos')
+    } catch (erro) {
+      setErroEnvio(erro instanceof Error ? erro.message : 'Falha ao registrar a solicitação local.')
+    } finally {
+      setEnviando(false)
     }
   }
 
@@ -110,16 +134,26 @@ export function DetalhesSolicitacao({ id }: { id: string }) {
                 : <span />}
               <span className="booking-purpose-form__count" id={`${finalidadeId}-count`} aria-live="polite">{finalidadeTrimada.length}/255 caracteres</span>
             </div>
-            <p className="booking-purpose-form__notice" role="note">Formulário demonstrativo. Nenhuma solicitação será enviada nesta versão.</p>
+            <p className="booking-purpose-form__notice" role="note">{simuladorLocalAtivo
+              ? 'Simulador local: a solicitação será guardada somente neste navegador.'
+              : 'Formulário demonstrativo. Nenhuma solicitação será enviada nesta versão.'}</p>
             {erroPayload && <p className="booking-request-preview__error" role="alert">{erroPayload}</p>}
             <button className="button button--primary booking-purpose-form__submit" type="submit" disabled={!podeRevisar}>Revisar solicitação</button>
           </form>
         </> : payloadPreview ? <>
-          <p className="booking-request-preview__notice" role="note">Esta é apenas uma prévia. Nenhuma solicitação foi enviada e nenhum laboratório foi reservado.</p>
+          <p className="booking-request-preview__notice" role="note">{simuladorLocalAtivo
+            ? 'Prévia do simulador local. O envio ficará disponível somente neste navegador e não cria uma reserva real.'
+            : 'Esta é apenas uma prévia. Nenhuma solicitação foi enviada e nenhum laboratório foi reservado.'}</p>
           <dl className="booking-request-preview__purpose">
             <div><dt>Finalidade da solicitação</dt><dd>{payloadPreview.finalidade}</dd></div>
           </dl>
           <button className="button button--secondary booking-request-preview__edit" type="button" onClick={() => setModo('formulario')}>Voltar para editar</button>
+          {simuladorLocalAtivo && <div>
+            {erroEnvio && <p className="booking-request-preview__error" role="alert">{erroEnvio}</p>}
+            <button className="button button--primary booking-purpose-form__submit" type="button" disabled={enviando} onClick={enviarSolicitacaoLocal}>
+              {enviando ? 'Enviando para o teste local...' : 'Enviar solicitação de teste'}
+            </button>
+          </div>}
         </> : <p className="booking-request-preview__error" role="alert">Não foi possível carregar a prévia. Volte ao formulário e revise os dados.</p>}
       </section>}
     </main>
