@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { obterExpiracaoToken, obterTokenAcesso, verificarSessao } from '../services/autenticacao'
+import { ANTECEDENCIA_RENOVACAO_MS, obterExpiracaoToken, verificarSessao } from '../services/autenticacao'
 
 type EstadoSessao = 'verificando' | 'autorizado' | 'sem-sessao' | 'indisponivel'
 
@@ -27,10 +27,10 @@ export function RotaProtegida() {
           return
         }
         setEstado('autorizado')
-        const expiracao = obterExpiracaoToken(obterTokenAcesso())
+        const expiracao = obterExpiracaoToken()
         if (expiracao !== null) {
           // Renova antes do vencimento, evitando expirar durante uma página aberta.
-          const atraso = Math.max(1_000, expiracao - Date.now() - 30_000)
+          const atraso = Math.max(1_000, expiracao - Date.now() - ANTECEDENCIA_RENOVACAO_MS)
           temporizador = setTimeout(() => { void conferir(false) }, atraso)
         }
       } catch {
@@ -41,11 +41,16 @@ export function RotaProtegida() {
     }
 
     const aoFocar = () => { void conferir(false) }
+    const aoMostrar = () => {
+      if (document.visibilityState === 'visible') aoFocar()
+    }
     window.addEventListener('focus', aoFocar)
+    document.addEventListener('visibilitychange', aoMostrar)
     void conferir()
     return () => {
       ativo = false
       window.removeEventListener('focus', aoFocar)
+      document.removeEventListener('visibilitychange', aoMostrar)
       if (temporizador !== undefined) clearTimeout(temporizador)
     }
   }, [location.pathname, tentativa])

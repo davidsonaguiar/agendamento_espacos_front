@@ -22,7 +22,7 @@ function comLockCookie<T>(acao: () => Promise<T>): Promise<T> {
   return tarefa
 }
 
-const ANTECEDENCIA_RENOVACAO_MS = 30_000
+export const ANTECEDENCIA_RENOVACAO_MS = 30_000
 
 let renovacaoEmAndamento: Promise<RespostaLogin | null> | null = null
 
