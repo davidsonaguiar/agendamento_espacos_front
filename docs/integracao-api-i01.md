@@ -1,7 +1,10 @@
 ﻿# Etapa I01 — infraestrutura HTTP
 
-Escopo: cliente isolado, sem importações nas telas e sem chamadas reais à API.
-Base verificada: feature/integracao-api, commit c5571b3, árvore inicialmente limpa.
+Escopo: cliente HTTP compartilhado e integração de cadastro/listagem de espaços
+no painel do gestor. Os testes usam mocks; não foi validado contra API real.
+Contrato de autenticação usado pelo frontend: backend `dev`, commit
+d9281780b06186916928a62f077f8e9e721b97ff. O backend `main` tem diferenças
+no cadastro e nos perfis; alinhe o ambiente implantado com `dev` antes de integrar.
 
 ## Uso e configuração
 
@@ -26,11 +29,14 @@ Renderizar mensagens como texto, nunca como HTML. Cancelamentos preservam o
 erro original; falhas de transporte/leitura são erros de rede.
 O corpo preservado pode conter dados da API: não enviá-lo automaticamente a logs.
 
-## Contratos conferidos no backend (somente leitura)
+## Contratos conferidos no backend `dev` (somente leitura)
 
 - main.py registra /usuarios, /espacos, /solicitacoes e /agendamentos.
 - usuarios/interface/roteadores/roteador.py: POST /usuarios/login recebe JSON
-  identificacao e senha; POST /usuarios/servidor retorna 201; GET /usuarios/me
+  identificacao e senha; POST /usuarios/ retorna 201 para cadastro público
+  (/usuarios/servidor é alias legado); GET /usuarios/me, POST /usuarios/refresh
+  e POST /usuarios/logout estão disponíveis. Perfis globais: Administrador e
+  Membro; GET /usuarios/me
   utiliza Bearer via HTTPBearer.
 - espacos/interface/roteadores/recursos.py: recursos sob /espacos/{id}/recursos.
 - agendamento/interface/roteador.py: /agendamentos/disponibilidade e
@@ -39,33 +45,21 @@ O corpo preservado pode conter dados da API: não enviá-lo automaticamente a lo
   incluindo 401, 403, 404, 409, 413, 422 e 500. Validação FastAPI pode retornar
   detail como lista de objetos com msg. Proxies podem responder texto ou vazio.
 
-Nenhum serviço de endpoint foi implementado. Nenhum backend foi iniciado.
+O serviço `src/services/espacos.ts` integra GET e POST `/espacos/` com sessão
+autenticada. O cadastro exige Administrador e envia `nome`, `descricao`,
+`capacidade`, `bloco` e `disponibilidade`; a API responde 201. O GET lista
+espaços conforme as permissões do perfil. Respostas são validadas em runtime.
+O simulador local não persiste espaços no backend.
 
-## Composição futura com o login
+## Composição do cliente de espaços com o login
 
-Inspeção via git show de origin/feature/frontend-login, sem incorporar arquivos.
-autenticacao.ts contém transporte privado requisitar, ErroAutenticacao,
-validação de sessão e sessionStorage. Isso continua sob responsabilidade do login.
-
-- Ambos usam VITE_API_URL. Login usa fallback http://localhost:8000; este cliente
-  exige configuração explícita. Alinhar essa política na composição.
-- Trocar futuramente apenas o transporte privado por este cliente, adaptando body
-  de string JSON para objeto e passando token do serviço de autenticação.
-- Converter ErroHttp para ErroAutenticacao onde necessário, preservando status
-  para a lógica existente de 401/403 e mensagens específicas de autenticação.
-- Manter validação de JWT/usuário, armazenamento, rotas e sessão no serviço atual.
-- Tratar retorno undefined explicitamente no login, que exige JSON válido.
-- Preservar cancelamentos, distinguindo-os de falhas de rede.
+O cliente HTTP compartilhado continua em `src/services/http.ts`. O serviço de
+autenticação valida a sessão antes de chamadas protegidas e fornece o token
+Bearer ao serviço de espaços. A página do gestor exibe falhas da API e permite
+tentar o carregamento novamente; não apresenta sucesso quando o backend falha.
 
 ## Verificação local
 
-Sem runner configurado nesta branch: alternativa sem dependências com node:test,
-node:assert e stripTypeScriptTypes do Node 24 instalado, seguindo o mecanismo dos
-testes da branch de login. O teste lê o serviço real e substitui apenas a expressão
-de ambiente Vite antes de executá-lo. Todos os fetch são mocks restaurados ao final.
-
-Executar: node --test tests/http.test.mjs
-Build Windows: npm.cmd run build
-Verificação: git diff --check
-
-Não houve validação contra API real. Commit, push e Etapa I02 dependem de autorização.
+Validado com mocks de API nos testes de componente e E2E, além de `npm test`,
+`npm run build` e `npm run test:e2e`. Não houve validação contra uma instância
+real do backend; confirme `VITE_API_URL`, CORS e credenciais no ambiente integrado.

@@ -62,7 +62,7 @@ async function requisitar<T>(caminho: string, opcoes: OpcoesHttp): Promise<T> {
       ...opcoes, credentials: 'include', signal,
     })
     if (caminho === '/usuarios/logout' && corpo === undefined) return undefined as T
-    if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) {
+    if (!corpo || typeof corpo !== 'object') {
       throw new ErroAutenticacao('O servidor respondeu com dados inesperados.')
     }
     return corpo as T
@@ -243,6 +243,19 @@ export function verificarSessao(): Promise<UsuarioAutenticado | null> {
     if (verificacaoEmAndamento === tarefa) verificacaoEmAndamento = null
   }).catch(() => undefined)
   return tarefa
+}
+
+export async function requisitarComSessao<T>(
+  caminho: string,
+  opcoes: Omit<OpcoesHttp, 'token' | 'credentials'> = {},
+): Promise<T> {
+  if (simuladorLocalAtivo) {
+    throw new ErroAutenticacao('Esta operação exige conexão com o backend e não está disponível no simulador local.')
+  }
+  const usuario = await verificarSessao()
+  const token = obterTokenAcesso()
+  if (!usuario || !token) throw new ErroAutenticacao('Sua sessão expirou. Entre novamente.', 401)
+  return requisitar<T>(caminho, { ...opcoes, token })
 }
 
 async function conferirSessao(versao: number): Promise<UsuarioAutenticado | null> {

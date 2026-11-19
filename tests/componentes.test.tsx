@@ -19,7 +19,19 @@ beforeEach(() => {
   globalThis.fetch = async (input, options) => {
     const url = String(input)
     chamadas.push({ url, body: options?.body ? JSON.parse(String(options.body)) : null })
-    if (new URL(url).pathname === '/espacos/') return Response.json([])
+    if (new URL(url).pathname === '/espacos/') {
+      if (options?.method === 'POST') {
+        return Response.json({
+          id: 9,
+          nome: 'Laboratório de Teste',
+          descricao: 'Bancadas para aulas',
+          capacidade: 24,
+          bloco: 'Bloco D',
+          disponibilidade: true,
+        }, { status: 201 })
+      }
+      return Response.json([])
+    }
     if (url.endsWith('/login')) autenticado = true
     if (url.endsWith('/logout')) { autenticado = false; return new Response(null, { status: 204 }) }
     if (url.endsWith('/usuarios/')) return Response.json(usuario, { status: 201 })
@@ -79,6 +91,30 @@ test('administrador autenticado pode abrir o painel do gestor', async () => {
   await screen.findByRole('heading', { name: 'Painel do gestor' })
   assert.ok(screen.getByRole('link', { name: 'Painel do gestor' }))
   assert.ok(screen.getByRole('tab', { name: 'Aprovações' }))
+})
+
+test('administrador cadastra laboratório com o contrato da API', async () => {
+  iniciarSessao('Administrador')
+  const user = userEvent.setup()
+  abrir('/admin')
+  await screen.findByRole('heading', { name: 'Painel do gestor' })
+  await user.click(screen.getByRole('tab', { name: 'Laboratórios' }))
+  await screen.findByRole('heading', { name: 'Cadastrar laboratório' })
+  await user.type(screen.getByLabelText('Nome *'), 'Laboratório de Teste')
+  await user.type(screen.getByLabelText('Descrição'), 'Bancadas para aulas')
+  await user.type(screen.getByLabelText('Capacidade'), '24')
+  await user.type(screen.getByLabelText('Bloco'), 'Bloco D')
+  await user.click(screen.getByRole('button', { name: 'Cadastrar laboratório' }))
+
+  await screen.findByText('Espaço "Laboratório de Teste" cadastrado com sucesso.')
+  assert.ok(screen.getByText('Laboratório de Teste'))
+  assert.deepEqual(chamadas.find(chamada => chamada.url.endsWith('/espacos/') && chamada.body)?.body, {
+    nome: 'Laboratório de Teste',
+    descricao: 'Bancadas para aulas',
+    capacidade: 24,
+    bloco: 'Bloco D',
+    disponibilidade: true,
+  })
 })
 
 test('cadastro normaliza CPF, não envia perfil e valida confirmação', async () => {

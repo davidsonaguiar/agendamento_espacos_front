@@ -11,7 +11,21 @@ async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInva
   const usuarioDaSessao = { ...usuario, perfil: opcoes.perfil ?? 'Membro' }
   const chamadas: { caminho: string; corpo: unknown; authorization?: string }[] = []
   // Na composição com o catálogo, o login também monta a consulta de espaços.
-  await page.route('**/espacos/?*', route => route.fulfill({ status: 200, json: [] }))
+  await page.route('**/espacos/**', async route => {
+    const request = route.request()
+    const caminho = new URL(request.url()).pathname
+    chamadas.push({ caminho, corpo: request.postDataJSON(), authorization: request.headers().authorization })
+    if (request.method() === 'POST') {
+      return route.fulfill({
+        status: 201,
+        json: { id: 8, nome: 'Laboratório de Teste', descricao: 'Bancadas para aulas', capacidade: 24, bloco: 'Bloco D', disponibilidade: true },
+      })
+    }
+    return route.fulfill({
+      status: 200,
+      json: [{ id: 7, nome: 'Laboratório Existente', descricao: null, capacidade: 20, bloco: 'Bloco C', disponibilidade: true }],
+    })
+  })
   await page.route('**/usuarios/**', async route => {
     const request = route.request()
     const caminho = new URL(request.url()).pathname
@@ -87,6 +101,32 @@ test('administrador acessa o painel do gestor', async ({ page }) => {
   await expect(page.getByRole('tab', { name: 'Aprovações' })).toBeVisible()
   await page.getByRole('tab', { name: 'Agenda' }).click()
   await expect(page.getByText('Nenhuma reserva carregada.')).toBeVisible()
+})
+
+test('administrador lista e cadastra laboratório pela API', async ({ page }) => {
+  const chamadas = await simularApi(page, { autenticado: true, perfil: 'Administrador' })
+  await page.goto('/admin')
+  await page.getByRole('tab', { name: 'Laboratórios' }).click()
+  await expect(page.getByRole('heading', { name: 'Laboratórios cadastrados' })).toBeVisible()
+  await expect(page.getByText('Laboratório Existente')).toBeVisible()
+
+  await page.getByLabel('Nome *').fill('Laboratório de Teste')
+  await page.getByLabel('Descrição').fill('Bancadas para aulas')
+  await page.getByLabel('Capacidade').fill('24')
+  await page.getByLabel('Bloco').fill('Bloco D')
+  await page.getByRole('button', { name: 'Cadastrar laboratório' }).click()
+
+  await expect(page.getByRole('status')).toContainText('cadastrado com sucesso')
+  await expect(page.getByRole('heading', { name: 'Laboratório de Teste' })).toBeVisible()
+  const chamada = chamadas.find(item => item.caminho === '/espacos/' && item.corpo !== null)
+  expect(chamada?.corpo).toEqual({
+    nome: 'Laboratório de Teste',
+    descricao: 'Bancadas para aulas',
+    capacidade: 24,
+    bloco: 'Bloco D',
+    disponibilidade: true,
+  })
+  expect(chamada?.authorization).toMatch(/^Bearer /)
 })
 
 test('gestor consegue acessar sair em telas menores', async ({ page }) => {

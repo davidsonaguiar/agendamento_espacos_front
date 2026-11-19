@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Cabecalho } from '../components/Cabecalho'
+import { criarEspaco, listarEspacos } from '../services/espacos'
 import { atualizarStatusSolicitacaoSimulada, listarSolicitacoesSimuladas, simuladorLocalAtivo } from '../services/simuladorLocal'
+import type { CriarEspacoInput, EspacoApi } from '../types/espaco'
 import type { StatusSolicitacao, SolicitacaoResposta } from '../types/solicitacao'
 import styles from './PainelAdmin.module.css'
 
@@ -48,6 +50,16 @@ function filtrarPorPeriodo(dataIso: string | undefined, periodo: string, inicio:
 
 export function PainelAdmin() {
   const [abaAtiva, setAbaAtiva] = useState<AbaPainel>('aprovacoes')
+  const [nomeEspaco, setNomeEspaco] = useState('')
+  const [descricaoEspaco, setDescricaoEspaco] = useState('')
+  const [capacidadeEspaco, setCapacidadeEspaco] = useState('')
+  const [blocoEspaco, setBlocoEspaco] = useState('')
+  const [disponibilidadeEspaco, setDisponibilidadeEspaco] = useState(true)
+  const [espacos, setEspacos] = useState<EspacoApi[]>([])
+  const [carregandoEspacos, setCarregandoEspacos] = useState(false)
+  const [salvandoEspaco, setSalvandoEspaco] = useState(false)
+  const [erroEspacos, setErroEspacos] = useState('')
+  const [sucessoEspaco, setSucessoEspaco] = useState('')
   const [periodo, setPeriodo] = useState('todos')
   const [laboratorio, setLaboratorio] = useState('todos')
   const [finalidade, setFinalidade] = useState('todas')
@@ -73,6 +85,50 @@ export function PainelAdmin() {
       (status === 'todos' || solicitacao.status === status) &&
       filtrarPorPeriodo(data, periodo, inicio, fim)
   })
+
+  async function carregarEspacos() {
+    setCarregandoEspacos(true)
+    setErroEspacos('')
+    try {
+      setEspacos(await listarEspacos())
+    } catch (erro) {
+      setErroEspacos(erro instanceof Error ? erro.message : 'Não foi possível carregar os espaços.')
+    } finally {
+      setCarregandoEspacos(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!simuladorLocalAtivo) void carregarEspacos()
+  }, [])
+
+  async function cadastrarEspaco(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault()
+    setSalvandoEspaco(true)
+    setErroEspacos('')
+    setSucessoEspaco('')
+    const dados: CriarEspacoInput = {
+      nome: nomeEspaco.trim(),
+      descricao: descricaoEspaco.trim() || null,
+      capacidade: capacidadeEspaco ? Number(capacidadeEspaco) : null,
+      bloco: blocoEspaco.trim() || null,
+      disponibilidade: disponibilidadeEspaco,
+    }
+    try {
+      const criado = await criarEspaco(dados)
+      setEspacos(atuais => [...atuais.filter(espaco => espaco.id !== criado.id), criado])
+      setNomeEspaco('')
+      setDescricaoEspaco('')
+      setCapacidadeEspaco('')
+      setBlocoEspaco('')
+      setDisponibilidadeEspaco(true)
+      setSucessoEspaco(`Espaço "${criado.nome}" cadastrado com sucesso.`)
+    } catch (erro) {
+      setErroEspacos(erro instanceof Error ? erro.message : 'Não foi possível cadastrar o espaço.')
+    } finally {
+      setSalvandoEspaco(false)
+    }
+  }
 
   function decidir(id: number, novoStatus: Extract<StatusSolicitacao, 'Aprovado' | 'Rejeitado'>) {
     try {
@@ -264,11 +320,110 @@ export function PainelAdmin() {
         >
           <header className={styles.tituloSecao}>
             <h2>Gestão de laboratórios</h2>
-            <p>A edição dos espaços estará disponível após a integração com o backend.</p>
+            <p>Cadastre novos espaços e consulte os laboratórios registrados no sistema.</p>
           </header>
-          <p className={styles.estadoVazio} role="status">
-            Nenhum laboratório carregado. Os dados serão exibidos após a integração com o backend.
-          </p>
+          {simuladorLocalAtivo ? (
+            <p className={styles.aviso} role="note">
+              O cadastro de espaços requer conexão com o backend. Desative o simulador local para usar esta função.
+            </p>
+          ) : (
+            <form className={styles.formularioEspaco} onSubmit={evento => { void cadastrarEspaco(evento) }}>
+              <h3>Cadastrar laboratório</h3>
+              <div className={styles.camposEspaco}>
+                <label className={styles.campo}>
+                  <span>Nome *</span>
+                  <input
+                    value={nomeEspaco}
+                    onChange={evento => setNomeEspaco(evento.target.value)}
+                    required
+                    minLength={3}
+                    maxLength={120}
+                    disabled={salvandoEspaco}
+                  />
+                </label>
+                <label className={styles.campo}>
+                  <span>Descrição</span>
+                  <input
+                    value={descricaoEspaco}
+                    onChange={evento => setDescricaoEspaco(evento.target.value)}
+                    disabled={salvandoEspaco}
+                  />
+                </label>
+                <label className={styles.campo}>
+                  <span>Capacidade</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={capacidadeEspaco}
+                    onChange={evento => setCapacidadeEspaco(evento.target.value)}
+                    disabled={salvandoEspaco}
+                  />
+                </label>
+                <label className={styles.campo}>
+                  <span>Bloco</span>
+                  <input
+                    value={blocoEspaco}
+                    onChange={evento => setBlocoEspaco(evento.target.value)}
+                    disabled={salvandoEspaco}
+                  />
+                </label>
+                <label className={styles.checkboxEspaco}>
+                  <input
+                    type="checkbox"
+                    checked={disponibilidadeEspaco}
+                    onChange={evento => setDisponibilidadeEspaco(evento.target.checked)}
+                    disabled={salvandoEspaco}
+                  />
+                  Disponível para agendamento
+                </label>
+              </div>
+              <p className={styles.dicaEspaco}>O backend define o horário padrão de funcionamento de segunda a sexta, das 8h às 18h.</p>
+              {erroEspacos && <p className={styles.erro} role="alert">{erroEspacos}</p>}
+              {sucessoEspaco && <p className={styles.sucessoEspaco} role="status">{sucessoEspaco}</p>}
+              <button className={styles.botaoEspaco} type="submit" disabled={salvandoEspaco}>
+                {salvandoEspaco ? 'Cadastrando...' : 'Cadastrar laboratório'}
+              </button>
+            </form>
+          )}
+
+          <div className={styles.listaEspacos}>
+            <div className={styles.tituloListaEspacos}>
+              <h3>Laboratórios cadastrados</h3>
+              {!simuladorLocalAtivo && (
+                <button type="button" className={styles.botaoEspacoSecundario} onClick={() => { void carregarEspacos() }} disabled={carregandoEspacos}>
+                  {carregandoEspacos ? 'Atualizando...' : 'Atualizar lista'}
+                </button>
+              )}
+            </div>
+            {simuladorLocalAtivo ? (
+              <p className={styles.estadoVazio} role="status">A lista da API não fica disponível no simulador local.</p>
+            ) : carregandoEspacos ? (
+              <p className={styles.estadoVazio} role="status">Carregando laboratórios...</p>
+            ) : erroEspacos && !simuladorLocalAtivo ? (
+              <div>
+                <p className={styles.estadoVazio} role="alert">{erroEspacos}</p>
+                <button type="button" className={styles.botaoEspacoSecundario} onClick={() => { void carregarEspacos() }}>Tentar novamente</button>
+              </div>
+            ) : espacos.length ? (
+              <ul className={styles.listaEspacosItens}>
+                {espacos.map(espaco => (
+                  <li className={styles.itemEspaco} key={espaco.id}>
+                    <div>
+                      <h4>{espaco.nome}</h4>
+                      <p>{[espaco.bloco, espaco.capacidade !== null ? `${espaco.capacidade} pessoas` : null].filter(Boolean).join(' · ') || 'Localização e capacidade não informadas'}</p>
+                      {espaco.descricao && <p>{espaco.descricao}</p>}
+                    </div>
+                    <span className={espaco.disponibilidade ? styles.espacoDisponivel : styles.espacoIndisponivel}>
+                      {espaco.disponibilidade ? 'Disponível' : 'Indisponível'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.estadoVazio} role="status">Nenhum laboratório cadastrado.</p>
+            )}
+          </div>
         </section>
       </main>
     </>
