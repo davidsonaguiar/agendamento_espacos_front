@@ -1,0 +1,15 @@
+.site-nav__logout {
+  border: 1px solid var(--color-border, #d5e0dc);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-primary, #08745a);
+  padding: 9px 13px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.site-nav__logout:hover { background: #e7f4ef; }
+.site-nav__logout:focus-visible { outline: 3px solid #88cbb2; outline-offset: 3px; }
+.site-nav__logout:disabled { cursor: wait; opacity: .65; }
+@media (max-width: 560px) { .site-nav { gap: 8px; } .site-nav__logout { padding: 8px 10px; } }
