@@ -192,26 +192,131 @@ test('catálogo autenticado busca recurso sem apresentar fixture ou reserva inde
 })
 
 test('login retorna a detalhes reais pelo ID e preserva query string interna', async ({ page }) => {
-  await simularApi(page)
+  const chamadas = await simularApi(page)
   await page.goto('/laboratorios/77?origem=catalogo')
   await entrar(page)
   await expect(page).toHaveURL(/\/laboratorios\/77\?origem=catalogo$/)
-  await expect(page.getByRole('heading', { name: 'Laboratório API 77' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Detalhes do laboratório' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Laboratório API 77', exact: true })).toBeVisible()
+  await expect(page.locator('.breadcrumb')).toContainText('Detalhes do laboratório')
+  await expect(page.getByText(espacoApi.descricao, { exact: true })).toBeVisible()
+  await expect(page.getByText('Bloco X', { exact: true })).toBeVisible()
+  await expect(page.getByText('20 pessoas', { exact: true })).toBeVisible()
+  await expect(page.getByText(/Impressora 3D.*Indisponível/)).toBeVisible()
+  await expect(page.getByText('Horários de funcionamento não informados.', { exact: true })).toBeVisible()
   await expect(page.getByText('COLAB', { exact: true })).toHaveCount(0)
-  await page.getByRole('link', { name: 'Consultar situação do agendamento' }).click()
-  await expect(page.getByRole('heading', { name: 'Agendamento ainda não integrado' })).toBeVisible()
+  expect(chamadas.find(c => c.caminho.startsWith('/espacos/'))?.authorization).toMatch(/^Bearer /)
+  await page.getByRole('link', { name: 'Consultar horários disponíveis', exact: true }).click()
+  await expect(page).toHaveURL(/\/laboratorios\/77\/agendamento$/)
+  await expect(page.getByRole('heading', { name: 'Escolha a data e o horário' })).toBeVisible()
+  await expect(page.getByText('Nenhum horário disponível neste período.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Continuar para os detalhes' })).toBeDisabled()
 })
 
-for (const caminho of ['/laboratorios/77/agendamento', '/laboratorios/77/agendamento/detalhes']) {
-  test(`rota bloqueada não expõe horários ou formulário fictícios: ${caminho}`, async ({ page }) => {
-    await simularApi(page, { autenticado: true })
-    await page.goto(caminho)
-    await expect(page.getByRole('heading', { name: 'Agendamento ainda não integrado' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Revisar solicitação' })).toHaveCount(0)
-    await expect(page.getByText(/09:00/)).toHaveCount(0)
+test('calendário integrado consulta ID real, trata falha e vazio e navega até a prévia', async ({ page }) => {
+  await simularApi(page, { autenticado: true })
+  let falhar = true
+  let liberar!: () => void
+  const espera = new Promise<void>(resolve => { liberar = resolve })
+  const consultas: URL[] = []
+  await page.route('**/agendamentos/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    expect(request.method()).toBe('GET')
+    expect(url.pathname).toBe('/agendamentos/horarios-disponiveis')
+    expect(url.searchParams.get('id_espaco')).toBe('77')
+    expect(request.headers().authorization).toMatch(/^Bearer /)
+    consultas.push(url)
+    if (falhar) {
+      await espera
+      return route.fulfill({ status: 500, json: { detail: 'Disponibilidade indisponível no teste' } })
+    }
+    const data = '2090-01-07'
+    return route.fulfill({ status: 200, json: url.searchParams.get('data_inicio')! <= data && url.searchParams.get('data_fim')! >= data ? [
+      { data_hora_inicio: `${data}T08:00:00`, data_hora_fim: `${data}T09:00:00` },
+    ] : [] })
   })
-}
+  await page.goto('/laboratorios/77/agendamento?mes=2090-01')
+  await expect(page.getByText('Carregando disponibilidade...', { exact: true })).toBeVisible()
+  await expect.poll(() => consultas.length).toBeGreaterThan(0)
+  liberar()
+  await expect(page.getByRole('alert')).toContainText('Disponibilidade indisponível no teste')
+  await expect(page.getByRole('button', { name: 'Continuar para os detalhes' })).toBeDisabled()
+  falhar = false
+  await page.getByRole('button', { name: 'Tentar novamente', exact: true }).click()
+  const dia = page.getByRole('button', { name: /7 de janeiro de 2090: horários disponíveis/ })
+  await expect(dia).toBeEnabled()
+  expect(consultas.some(url => url.searchParams.get('data_inicio') === '2090-01-01' && url.searchParams.get('data_fim') === '2090-01-31')).toBe(true)
+  await expect(page.getByRole('button', { name: /, 8 de janeiro de 2090: sem horários disponíveis$/ })).toBeDisabled()
+  await page.getByRole('button', { name: 'Próximo mês' }).click()
+  await expect(page.getByText('Nenhum horário disponível neste período.', { exact: true })).toBeVisible()
+  expect(consultas.some(url => url.searchParams.get('data_inicio') === '2090-02-01' && url.searchParams.get('data_fim') === '2090-02-28')).toBe(true)
+  await page.getByRole('button', { name: 'Mês anterior' }).click()
+  await dia.click()
+  const slot = page.getByRole('button', { name: /08:00–09:00/ })
+  await slot.click()
+  await slot.click()
+  await expect(page.getByRole('region', { name: 'Resumo do intervalo' })).toContainText('2090-01-07 · 08:00–09:00')
+  await page.getByRole('button', { name: 'Continuar para os detalhes' }).click()
+  await expect(page).toHaveURL(/\/laboratorios\/77\/agendamento\/detalhes\?/)
+  const selecao = new URL(page.url()).searchParams
+  expect(selecao.get('data')).toBe('2090-01-07')
+  expect(selecao.get('inicio')).toBe('08:00:00')
+  expect(selecao.get('fim')).toBe('09:00:00')
+  await expect(page.getByRole('heading', { name: 'Resumo da seleção' })).toBeVisible()
+  expect(consultas.some(url => url.searchParams.get('data_inicio') === '2090-01-07' && url.searchParams.get('data_fim') === '2090-01-07')).toBe(true)
+  await expect(page.getByRole('button', { name: 'Enviar solicitação', exact: true })).toBeDisabled()
+})
+
+test('prévia integrada revalida seleção pela API e bloqueia intervalo inválido', async ({ page }) => {
+  await simularApi(page, { autenticado: true })
+  const consultas: URL[] = []
+  let escritas = 0
+  await page.route('**/solicitacoes/**', async route => {
+    if (route.request().method() !== 'GET') escritas++
+    await route.abort('blockedbyclient')
+  })
+  await page.route('**/agendamentos/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    expect(request.method()).toBe('GET')
+    expect(url.pathname).toBe('/agendamentos/horarios-disponiveis')
+    expect(url.searchParams.get('id_espaco')).toBe('77')
+    expect(request.headers().authorization).toMatch(/^Bearer /)
+    consultas.push(url)
+    return route.fulfill({ status: 200, json: [
+      { data_hora_inicio: '2090-01-07T08:00:00', data_hora_fim: '2090-01-07T09:00:00' },
+    ] })
+  })
+  const base = '/laboratorios/77/agendamento/detalhes'
+  await page.goto(base)
+  await expect(page.getByRole('heading', { name: 'Prévia da solicitação' })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('Seleção ausente ou inválida')
+  await expect(page.getByLabel('Finalidade da solicitação', { exact: true })).toHaveCount(0)
+  expect(consultas).toHaveLength(0)
+  await page.goto(`${base}?mes=2090-01&data=2090-01-07&inicio=08:00:00&fim=09:00:00`)
+  await expect(page.getByRole('heading', { name: 'Resumo da seleção' })).toBeVisible()
+  const resumo = page.locator('.booking-details-summary')
+  await expect(resumo).toContainText('Laboratório API 77')
+  await expect(resumo).toContainText('2090-01-07')
+  await expect(resumo).toContainText('08:00')
+  await expect(resumo).toContainText('09:00')
+  expect(consultas.some(url => url.searchParams.get('data_inicio') === '2090-01-07' && url.searchParams.get('data_fim') === '2090-01-07')).toBe(true)
+  await expect(page.getByLabel('Finalidade da solicitação', { exact: true })).toBeEditable()
+  await expect(page.getByRole('button', { name: 'Enviar solicitação', exact: true })).toBeDisabled()
+  await page.getByRole('link', { name: 'Voltar ao calendário' }).click()
+  const retorno = new URL(page.url())
+  expect(retorno.pathname).toBe('/laboratorios/77/agendamento')
+  expect(retorno.searchParams.get('data')).toBe('2090-01-07')
+  expect(retorno.searchParams.get('inicio')).toBe('08:00:00')
+  expect(retorno.searchParams.get('fim')).toBe('09:00:00')
+  await page.goto(`${base}?data=2090-01-07&inicio=08:00:00&fim=10:00:00`)
+  await expect(page.getByRole('alert')).toContainText('Seleção ausente ou inválida')
+  await expect(page.getByRole('heading', { name: 'Resumo da seleção' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Revisar solicitação' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Enviar solicitação', exact: true })).toHaveCount(0)
+  expect(consultas.length).toBeGreaterThanOrEqual(2)
+  expect(escritas).toBe(0)
+})
 
 test('catálogo recupera 401 com refresh e repete somente a página que falhou', async ({ page }) => {
   const chamadas = await simularApi(page, { autenticado: true })
