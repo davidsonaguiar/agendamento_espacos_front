@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { ANTECEDENCIA_RENOVACAO_MS, obterExpiracaoToken, verificarSessao } from '../services/autenticacao'
+import { ANTECEDENCIA_RENOVACAO_MS, eventoSessaoEncerrada, eventoSessaoGestor, obterExpiracaoToken, verificarSessao } from '../services/autenticacao'
+
+import { AcessoGestor } from '../gestao/AcessoGestor'
+import type { UsuarioAutenticado } from '../types/autenticacao'
 
 type EstadoSessao = 'verificando' | 'autorizado' | 'sem-sessao' | 'indisponivel'
 
 export function RotaProtegida() {
+  const [conta, setConta] = useState<UsuarioAutenticado | null>(null)
   const location = useLocation()
   const [estado, setEstado] = useState<EstadoSessao>('verificando')
   const [tentativa, setTentativa] = useState(0)
@@ -26,6 +30,7 @@ export function RotaProtegida() {
           setEstado('sem-sessao')
           return
         }
+        setConta(usuario)
         setEstado('autorizado')
         const expiracao = obterExpiracaoToken()
         if (expiracao !== null) {
@@ -44,11 +49,21 @@ export function RotaProtegida() {
     const aoMostrar = () => {
       if (document.visibilityState === 'visible') aoFocar()
     }
+    const exigirLogin = () => {
+      ativo = false
+      if (temporizador !== undefined) clearTimeout(temporizador)
+      setEstado('sem-sessao')
+    }
+    const reverSessao = () => setTentativa(n => n + 1)
+    window.addEventListener(eventoSessaoEncerrada, exigirLogin)
+    window.addEventListener(eventoSessaoGestor, reverSessao)
     window.addEventListener('focus', aoFocar)
     document.addEventListener('visibilitychange', aoMostrar)
     void conferir()
     return () => {
       ativo = false
+      window.removeEventListener(eventoSessaoEncerrada, exigirLogin)
+      window.removeEventListener(eventoSessaoGestor, reverSessao)
       window.removeEventListener('focus', aoFocar)
       document.removeEventListener('visibilitychange', aoMostrar)
       if (temporizador !== undefined) clearTimeout(temporizador)
@@ -68,5 +83,5 @@ export function RotaProtegida() {
       <button type="button" onClick={() => setTentativa(n => n + 1)}>Tentar novamente</button>
     </main>
   }
-  return <Outlet />
+  return conta && <AcessoGestor key={conta.id + conta.perfil} usuario={conta}><Outlet /></AcessoGestor>
 }

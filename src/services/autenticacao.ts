@@ -2,6 +2,7 @@ import type { RespostaLogin, UsuarioAutenticado, DadosCadastroMembro } from '../
 
 import { requisitar as requisitarHttp, ErroHttp } from './http'
 import type { OpcoesHttp } from './http'
+import { autenticarNoSimuladorLocal, simuladorLocalAtivo } from './sessaoSimulada'
 
 const TOKEN_KEY = 'labagenda.access_token'
 const USUARIO_KEY = 'labagenda.usuario'
@@ -61,7 +62,7 @@ async function requisitar<T>(caminho: string, opcoes: OpcoesHttp): Promise<T> {
       ...opcoes, credentials: 'include', signal,
     })
     if (caminho === '/usuarios/logout' && corpo === undefined) return undefined as T
-    if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) {
+    if (!corpo || typeof corpo !== 'object') {
       throw new ErroAutenticacao('O servidor respondeu com dados inesperados.')
     }
     return corpo as T
@@ -108,6 +109,14 @@ export async function autenticarUsuario(identificacao: string, senha: string): P
   await renovacaoEmAndamento?.catch(() => undefined)
   const versao = ++versaoSessao
   verificacaoEmAndamento = null
+  if (simuladorLocalAtivo) {
+    const dados = autenticarNoSimuladorLocal(identificacao, senha)
+    if (!dados) throw new ErroAutenticacao('E-mail ou senha inválidos no simulador local.', 401)
+    if (versao !== versaoSessao) throw new ErroAutenticacao('A sessão foi encerrada. Entre novamente.')
+    sessionStorage.removeItem(LOGOUT_KEY)
+    guardarSessao(dados)
+    return dados
+  }
   return comLockCookie(async () => {
     const dados = await requisitar<RespostaLogin>('/usuarios/login', {
       method: 'POST',
@@ -174,6 +183,15 @@ export function encerrarSessao(): void {
 
 /** Coalescência: dois componentes não devem girar o mesmo cookie de refresh em paralelo. */
 export function renovarSessao(): Promise<RespostaLogin | null> {
+  if (simuladorLocalAtivo) {
+    const usuario = obterUsuarioAutenticado()
+    const token = obterTokenAcesso()
+    if (!usuario || !token?.startsWith('simulador.') || tokenExpirou(token)) {
+      encerrarSessao()
+      return Promise.resolve(null)
+    }
+    return Promise.resolve({ access_token: token, token_type: 'bearer', usuario })
+  }
   if (sessionStorage.getItem(LOGOUT_KEY)) return Promise.resolve(null)
   if (renovacaoEmAndamento) return renovacaoEmAndamento
   const versao = versaoSessao
@@ -217,6 +235,9 @@ async function consultarUsuario(token: string, versao: number): Promise<UsuarioA
 }
 
 export function verificarSessao(): Promise<UsuarioAutenticado | null> {
+  if (simuladorLocalAtivo) {
+    return renovarSessao().then(sessao => sessao?.usuario ?? null)
+  }
   if (sessionStorage.getItem(LOGOUT_KEY)) return Promise.resolve(null)
   if (verificacaoEmAndamento) return verificacaoEmAndamento
   const tarefa = conferirSessao(versaoSessao)
@@ -225,6 +246,47 @@ export function verificarSessao(): Promise<UsuarioAutenticado | null> {
     if (verificacaoEmAndamento === tarefa) verificacaoEmAndamento = null
   }).catch(() => undefined)
   return tarefa
+}
+
+export const eventoSessaoGestor = 'labagenda:verificar-sessao'
+export const eventoSessaoEncerrada = 'labagenda:sessao-encerrada'
+
+export async function requisitarComSessao<T>(caminho: string, opcoes: Omit<OpcoesHttp, 'token' | 'credentials'> = {}) {
+  if (simuladorLocalAtivo) throw new ErroAutenticacao('Esta operação exige conexão com o backend.')
+  const usuario = obterUsuarioAutenticado()
+  const token = obterTokenAcesso()
+  const sessaoAlterada = (evento?: string) => {
+    if (evento && !opcoes.signal?.aborted && typeof window !== 'undefined') window.dispatchEvent(new Event(evento))
+    return new ErroAutenticacao('A sessão mudou durante a operação.', 401)
+  }
+  if (!usuario || !token) throw sessaoAlterada(eventoSessaoGestor)
+  const enviar = async (acesso: string) => {
+    const limite = AbortSignal.timeout(15_000)
+    const signal = opcoes.signal ? AbortSignal.any([opcoes.signal, limite]) : limite
+    const resposta = await requisitarHttp<T>(caminho, { ...opcoes, signal, token: acesso, credentials: 'include' })
+    if (obterUsuarioAutenticado()?.id !== usuario.id) throw sessaoAlterada()
+    return resposta
+  }
+  try {
+    return await enviar(token)
+  } catch (erro) {
+    if (!(erro instanceof ErroHttp && erro.status === 401)) throw erro
+    opcoes.signal?.throwIfAborted()
+    if (obterUsuarioAutenticado()?.id !== usuario.id) throw sessaoAlterada()
+    let atual = obterTokenAcesso()
+    if (atual === token) atual = (await renovarSessao())?.access_token ?? null
+    if (!atual) throw sessaoAlterada(eventoSessaoEncerrada)
+    if (obterUsuarioAutenticado()?.id !== usuario.id) throw sessaoAlterada(eventoSessaoGestor)
+    try {
+      return await enviar(atual)
+    } catch (segundoErro) {
+      if (segundoErro instanceof ErroHttp && segundoErro.status === 401 && obterTokenAcesso() === atual) {
+        encerrarSessao()
+        throw sessaoAlterada(eventoSessaoEncerrada)
+      }
+      throw segundoErro
+    }
+  }
 }
 
 async function conferirSessao(versao: number): Promise<UsuarioAutenticado | null> {
@@ -269,6 +331,11 @@ async function conferirSessao(versao: number): Promise<UsuarioAutenticado | null
 
 /** Faz logout no backend (revogação da sessão) e limpa os dados locais mesmo se a rede falhar. */
 export function desconectarUsuario(): Promise<void> {
+  if (simuladorLocalAtivo) {
+    sessionStorage.removeItem(LOGOUT_KEY)
+    encerrarSessao()
+    return Promise.resolve()
+  }
   if (logoutEmAndamento) return logoutEmAndamento
   // Bloqueia restauração automática mesmo após recarregar, se a rede falhar.
   sessionStorage.setItem(LOGOUT_KEY, '1')

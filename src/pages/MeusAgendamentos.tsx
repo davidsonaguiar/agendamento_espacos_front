@@ -1,7 +1,13 @@
-﻿import { useState } from 'react'
+﻿import { useCallback, useState } from 'react'
 import { Cabecalho } from '../components/Cabecalho'
 import { CartaoSolicitacao } from '../components/CartaoSolicitacao'
-import { minhaAgendaDemonstrativa } from '../data/minhaAgendaDemonstrativa'
+import { useLocation } from 'react-router-dom'
+import { AvisoConsulta } from '../gestao/Controles'
+import { useConsulta } from '../gestao/consulta'
+import { minhasSolicitacoes } from '../services/agendamentoAluno'
+import { RespostaAluno } from '../components/RespostaAluno'
+import { obterUsuarioAutenticado } from '../services/autenticacao'
+import { listarSolicitacoesSimuladas, simuladorLocalAtivo } from '../services/simuladorLocal'
 import type { SolicitacaoResposta, StatusSolicitacao } from '../types/solicitacao'
 
 type FiltroStatus = 'Todos' | StatusSolicitacao
@@ -35,9 +41,15 @@ function filtrarEOrdenarSolicitacoes(solicitacoes: readonly SolicitacaoResposta[
 
 export function MeusAgendamentos() {
   const [status, setStatus] = useState<FiltroStatus>('Todos')
-  const solicitacoes = filtrarEOrdenarSolicitacoes(minhaAgendaDemonstrativa, status)
+  const usuario = obterUsuarioAutenticado()?.id
+  const location = useLocation()
+  const carregar = useCallback(async (signal: AbortSignal) => {
+    if (!usuario) throw new Error('Entre novamente para consultar suas solicitações.')
+    return simuladorLocalAtivo ? listarSolicitacoesSimuladas(usuario) : minhasSolicitacoes(usuario, signal)
+  }, [usuario])
+  const consulta = useConsulta(carregar, true)
+  const solicitacoes = filtrarEOrdenarSolicitacoes(consulta.dados ?? [], status)
 
-  // Carregamento e erro de API serão tratados na integração; aqui só há dados locais.
   return <>
     <Cabecalho />
     <main className="page-shell agenda-page">
@@ -45,7 +57,9 @@ export function MeusAgendamentos() {
         <h1>Agendamentos</h1>
         <p>Acompanhe as solicitações de utilização dos laboratórios.</p>
       </header>
-      <p className="agenda-notice" role="note">Registros demonstrativos e fictícios, sem consulta à API. Nenhuma solicitação foi enviada por esta página; os status apresentados não comprovam reservas confirmadas.</p>
+      {simuladorLocalAtivo && <p className="agenda-notice" role="note">As solicitações de teste ficam neste navegador.</p>}
+      {location.state?.aviso && <p role="status">{location.state.aviso}</p>}
+      <button className="button button--secondary" onClick={consulta.atualizar}>Atualizar solicitações</button>
       <fieldset className="agenda-filters" aria-controls="agenda-results">
         <legend>Filtrar por status</legend>
         <div className="agenda-filters__options">
@@ -58,14 +72,18 @@ export function MeusAgendamentos() {
           >{filtro.rotulo}</button>)}
         </div>
       </fieldset>
+      {!consulta.dados ? <AvisoConsulta erro={consulta.erro} atualizar={consulta.atualizar} /> : <>
       <p className="agenda-results-count" role="status">{solicitacoes.length} {solicitacoes.length === 1 ? 'solicitação encontrada' : 'solicitações encontradas'}. Ordenação pela data do primeiro horário, crescente.</p>
-      <section id="agenda-results" aria-label="Solicitações demonstrativas">
+      <section id="agenda-results" aria-label={simuladorLocalAtivo ? 'Solicitações locais de teste' : 'Minhas solicitações'}>
         {solicitacoes.length > 0 ? <ul className="agenda-list">
           {solicitacoes.map((solicitacao, indice) => <li key={solicitacao.id ?? `solicitacao-${indice}`}>
             <CartaoSolicitacao solicitacao={solicitacao} />
+            {!simuladorLocalAtivo && <RespostaAluno solicitacao={solicitacao} atualizar={consulta.atualizar} />}
           </li>)}
-        </ul> : <p className="agenda-empty">Nenhuma solicitação corresponde ao filtro selecionado. Selecione “Todos” para voltar à listagem completa.</p>}
-      </section>
+        </ul> : <p className="agenda-empty">{simuladorLocalAtivo
+          ? 'Você ainda não enviou solicitações neste teste local.'
+          : 'Nenhuma solicitação corresponde ao filtro selecionado. Selecione “Todos” para voltar à listagem completa.'}</p>}
+      </section></>}
     </main>
   </>
 }
