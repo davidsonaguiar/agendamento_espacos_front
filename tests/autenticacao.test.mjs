@@ -10,7 +10,7 @@ const urlHttp = `data:text/javascript;base64,${Buffer.from(stripTypeScriptTypes(
 const urlSimulador = `data:text/javascript;base64,${Buffer.from('export const simuladorLocalAtivo = false; export function autenticarNoSimuladorLocal() { return null }').toString('base64')}`
 const fonte = (await readFile(new URL('../src/services/autenticacao.ts', import.meta.url), 'utf8'))
   .replace("from './http'", `from '${urlHttp}'`)
-  .replace("from './simuladorLocal'", `from '${urlSimulador}'`)
+  .replace("from './sessaoSimulada'", `from '${urlSimulador}'`)
 const compilado = stripTypeScriptTypes(fonte)
 const api = await import(`data:text/javascript;base64,${Buffer.from(compilado).toString('base64')}`)
 

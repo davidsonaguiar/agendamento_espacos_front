@@ -2,7 +2,7 @@ import type { RespostaLogin, UsuarioAutenticado, DadosCadastroMembro } from '../
 
 import { requisitar as requisitarHttp, ErroHttp } from './http'
 import type { OpcoesHttp } from './http'
-import { autenticarNoSimuladorLocal, simuladorLocalAtivo } from './simuladorLocal'
+import { autenticarNoSimuladorLocal, simuladorLocalAtivo } from './sessaoSimulada'
 
 const TOKEN_KEY = 'labagenda.access_token'
 const USUARIO_KEY = 'labagenda.usuario'
@@ -186,7 +186,10 @@ export function renovarSessao(): Promise<RespostaLogin | null> {
   if (simuladorLocalAtivo) {
     const usuario = obterUsuarioAutenticado()
     const token = obterTokenAcesso()
-    if (!usuario || !token) return Promise.resolve(null)
+    if (!usuario || !token?.startsWith('simulador.') || tokenExpirou(token)) {
+      encerrarSessao()
+      return Promise.resolve(null)
+    }
     return Promise.resolve({ access_token: token, token_type: 'bearer', usuario })
   }
   if (sessionStorage.getItem(LOGOUT_KEY)) return Promise.resolve(null)
@@ -233,7 +236,7 @@ async function consultarUsuario(token: string, versao: number): Promise<UsuarioA
 
 export function verificarSessao(): Promise<UsuarioAutenticado | null> {
   if (simuladorLocalAtivo) {
-    return Promise.resolve(obterTokenAcesso() ? obterUsuarioAutenticado() : null)
+    return renovarSessao().then(sessao => sessao?.usuario ?? null)
   }
   if (sessionStorage.getItem(LOGOUT_KEY)) return Promise.resolve(null)
   if (verificacaoEmAndamento) return verificacaoEmAndamento
@@ -245,17 +248,45 @@ export function verificarSessao(): Promise<UsuarioAutenticado | null> {
   return tarefa
 }
 
-export async function requisitarComSessao<T>(
-  caminho: string,
-  opcoes: Omit<OpcoesHttp, 'token' | 'credentials'> = {},
-): Promise<T> {
-  if (simuladorLocalAtivo) {
-    throw new ErroAutenticacao('Esta operação exige conexão com o backend e não está disponível no simulador local.')
-  }
-  const usuario = await verificarSessao()
+export const eventoSessaoGestor = 'labagenda:verificar-sessao'
+export const eventoSessaoEncerrada = 'labagenda:sessao-encerrada'
+
+export async function requisitarComSessao<T>(caminho: string, opcoes: Omit<OpcoesHttp, 'token' | 'credentials'> = {}) {
+  if (simuladorLocalAtivo) throw new ErroAutenticacao('Esta operação exige conexão com o backend.')
+  const usuario = obterUsuarioAutenticado()
   const token = obterTokenAcesso()
-  if (!usuario || !token) throw new ErroAutenticacao('Sua sessão expirou. Entre novamente.', 401)
-  return requisitar<T>(caminho, { ...opcoes, token })
+  const sessaoAlterada = (evento?: string) => {
+    if (evento && !opcoes.signal?.aborted && typeof window !== 'undefined') window.dispatchEvent(new Event(evento))
+    return new ErroAutenticacao('A sessão mudou durante a operação.', 401)
+  }
+  if (!usuario || !token) throw sessaoAlterada(eventoSessaoGestor)
+  const enviar = async (acesso: string) => {
+    const limite = AbortSignal.timeout(15_000)
+    const signal = opcoes.signal ? AbortSignal.any([opcoes.signal, limite]) : limite
+    const resposta = await requisitarHttp<T>(caminho, { ...opcoes, signal, token: acesso, credentials: 'include' })
+    if (obterUsuarioAutenticado()?.id !== usuario.id) throw sessaoAlterada()
+    return resposta
+  }
+  try {
+    return await enviar(token)
+  } catch (erro) {
+    if (!(erro instanceof ErroHttp && erro.status === 401)) throw erro
+    opcoes.signal?.throwIfAborted()
+    if (obterUsuarioAutenticado()?.id !== usuario.id) throw sessaoAlterada()
+    let atual = obterTokenAcesso()
+    if (atual === token) atual = (await renovarSessao())?.access_token ?? null
+    if (!atual) throw sessaoAlterada(eventoSessaoEncerrada)
+    if (obterUsuarioAutenticado()?.id !== usuario.id) throw sessaoAlterada(eventoSessaoGestor)
+    try {
+      return await enviar(atual)
+    } catch (segundoErro) {
+      if (segundoErro instanceof ErroHttp && segundoErro.status === 401 && obterTokenAcesso() === atual) {
+        encerrarSessao()
+        throw sessaoAlterada(eventoSessaoEncerrada)
+      }
+      throw segundoErro
+    }
+  }
 }
 
 async function conferirSessao(versao: number): Promise<UsuarioAutenticado | null> {

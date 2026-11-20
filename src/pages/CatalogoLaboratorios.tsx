@@ -1,119 +1,66 @@
-﻿import { useMemo, useState } from 'react'
-import { CartaoLaboratorio } from '../components/CartaoLaboratorio'
+﻿import { useState } from 'react'
 import { Cabecalho } from '../components/Cabecalho'
-import { laboratoriosFicticios } from '../data/laboratorios'
-
-function normalizar(texto: string) {
-  return texto.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('pt-BR')
-}
+import { CartaoEspaco } from '../components/CartaoEspaco'
+import { useCatalogoEspacos } from '../hooks/useCatalogoEspacos'
+import { filtrarEspacos } from '../data/catalogoEspacos'
 
 export function CatalogoLaboratorios() {
+  const { estado, tentarNovamente } = useCatalogoEspacos()
   const [busca, setBusca] = useState('')
-  const [blocoSelecionado, setBlocoSelecionado] = useState('')
-  const [capacidadeSelecionada, setCapacidadeSelecionada] = useState('')
-  const [equipamentoSelecionado, setEquipamentoSelecionado] = useState('')
-  const [tipoSelecionado, setTipoSelecionado] = useState('')
-
-  const blocos = [...new Set(laboratoriosFicticios.map((lab) => lab.bloco))].sort()
-  const capacidades = [...new Set(laboratoriosFicticios.map((lab) => lab.capacidade))].sort((a, b) => a - b)
-  const equipamentos = [...new Set(laboratoriosFicticios.flatMap((lab) => lab.equipamentos))].sort()
-  const tiposDeUso = [...new Set(laboratoriosFicticios.flatMap((lab) => lab.tiposDeUso))].sort()
-
-  const laboratoriosFiltrados = useMemo(() => {
-    const termo = normalizar(busca.trim())
-    return laboratoriosFicticios.filter((lab) => {
-      const nomeCorresponde = normalizar(lab.nome).includes(termo)
-      const blocoCorresponde = !blocoSelecionado || lab.bloco === blocoSelecionado
-      const capacidadeCorresponde = !capacidadeSelecionada || String(lab.capacidade) === capacidadeSelecionada
-      const equipamentoCorresponde = !equipamentoSelecionado || lab.equipamentos.includes(equipamentoSelecionado)
-      const tipoCorresponde = !tipoSelecionado || lab.tiposDeUso.includes(tipoSelecionado)
-      return nomeCorresponde && blocoCorresponde && capacidadeCorresponde && equipamentoCorresponde && tipoCorresponde
-    })
-  }, [busca, blocoSelecionado, capacidadeSelecionada, equipamentoSelecionado, tipoSelecionado])
-
-  const quantidadeDisponivel = laboratoriosFicticios.filter((lab) => lab.disponivel).length
-  const percentualDisponivel = laboratoriosFicticios.length
-    ? Math.round(quantidadeDisponivel / laboratoriosFicticios.length * 100)
-    : 0
-
-  return (
-    <>
-      <Cabecalho />
-      <main className="page-shell">
-        <section className="page-intro" aria-labelledby="catalog-title">
-          <h1 id="catalog-title">Encontre o laboratório ideal</h1>
-          <p>Pesquise, filtre e escolha o espaço adequado para sua atividade acadêmica.</p>
-        </section>
-
-        <section className="catalog-summary" aria-label="Resumo dos laboratórios">
-          <div>
-            <h2>{laboratoriosFicticios.length} laboratórios cadastrados</h2>
-            <p>{quantidadeDisponivel} espaços disponíveis para novas solicitações.</p>
-          </div>
-          <span className="catalog-summary__badge">
-            <span className="catalog-summary__dot" aria-hidden="true" />
-            {percentualDisponivel}% disponíveis
-          </span>
-        </section>
-
-        <section className="catalog-controls" aria-label="Pesquisa e filtros">
-          <label className="search-field">
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
-              <circle cx="10.8" cy="10.8" r="7.3" stroke="currentColor" strokeWidth="1.8" />
-              <path d="m16.2 16.2 5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-            <input
-              type="search"
-              aria-label="Buscar laboratório por nome"
-              placeholder="Buscar laboratório por nome"
-              value={busca}
-              onChange={(event) => setBusca(event.target.value)}
-            />
-          </label>
-          <label className="filter-field">
-            <span className="visually-hidden">Filtrar por bloco ou prédio</span>
-            <select value={blocoSelecionado} onChange={(event) => setBlocoSelecionado(event.target.value === '__todos__' ? '' : event.target.value)}>
-              <option value="" disabled hidden>Bloco / Prédio</option>
-              <option value="__todos__">Todos os blocos</option>
-              {blocos.map((bloco) => <option key={bloco} value={bloco}>{bloco}</option>)}
-            </select>
-          </label>
-          <label className="filter-field">
-            <span className="visually-hidden">Filtrar por capacidade</span>
-            <select value={capacidadeSelecionada} onChange={(event) => setCapacidadeSelecionada(event.target.value === '__todos__' ? '' : event.target.value)}>
-              <option value="" disabled hidden>Capacidade</option>
-              <option value="__todos__">Todas as capacidades</option>
-              {capacidades.map((capacidade) => <option key={capacidade} value={capacidade}>{capacidade} pessoas</option>)}
-            </select>
-          </label>
-          <label className="filter-field">
-            <span className="visually-hidden">Filtrar por equipamento</span>
-            <select value={equipamentoSelecionado} onChange={(event) => setEquipamentoSelecionado(event.target.value === '__todos__' ? '' : event.target.value)}>
-              <option value="" disabled hidden>Equipamentos</option>
-              <option value="__todos__">Todos os equipamentos</option>
-              {equipamentos.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
-          <label className="filter-field">
-            <span className="visually-hidden">Filtrar por tipo de uso</span>
-            <select value={tipoSelecionado} onChange={(event) => setTipoSelecionado(event.target.value === '__todos__' ? '' : event.target.value)}>
-              <option value="" disabled hidden>Tipo de uso</option>
-              <option value="__todos__">Todos os tipos</option>
-              {tiposDeUso.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
-            </select>
-          </label>
-        </section>
-
-        {laboratoriosFiltrados.length ? (
-          <section className="lab-grid" aria-label="Laboratórios">
-            {laboratoriosFiltrados.map((lab) => <CartaoLaboratorio key={lab.id} laboratorio={lab} />)}
+  const [bloco, setBloco] = useState('')
+  const [capacidade, setCapacidade] = useState('')
+  const [recurso, setRecurso] = useState('')
+  const espacos = estado.tipo === 'pronto' ? estado.espacos : []
+  const blocos = [...new Set(espacos.flatMap(e => e.bloco?.trim() ? [e.bloco] : []))].sort()
+  const capacidades = [...new Set(espacos.flatMap(e => e.capacidade === null ? [] : [e.capacidade]))].sort((a, b) => a - b)
+  const recursos = [...new Set(espacos.flatMap(e => e.recursos.map(r => r.nome)))].sort()
+  const filtrados = filtrarEspacos(espacos, { busca, bloco, capacidade, recurso })
+  return <>
+    <Cabecalho />
+    <main className="page-shell">
+      <section className="page-intro" aria-labelledby="catalog-title">
+        <h1 id="catalog-title">Encontre o laboratório ideal</h1>
+        <p>Pesquise pelo nome do laboratório ou de um recurso associado.</p>
+      </section>
+      {estado.tipo === 'carregando' ? <p className="empty-state" role="status">Carregando catálogo...</p>
+        : estado.tipo === 'erro' ? <section className="empty-state" role="alert">
+          <p>{estado.mensagem}</p>
+          <button type="button" className="button button--primary" onClick={tentarNovamente}>Tentar novamente</button>
+        </section> : <>
+          <section className="catalog-summary" aria-label="Resumo do catálogo">
+            <div><h2>{espacos.length} espaços no catálogo acessível à sua conta</h2>
+              <p>A situação cadastral não representa disponibilidade de horários.</p></div>
           </section>
-        ) : (
-          <p className="empty-state" role="status">Nenhum laboratório encontrado.</p>
-        )}
-      </main>
-    </>
-  )
+          <p className="catalog-data-note">Recursos indisponíveis também aparecem na busca, identificados nos resultados. A solicitação permanece vinculada ao laboratório.</p>
+          <section className="catalog-controls catalog-controls--api" aria-label="Pesquisa e filtros">
+            <label className="search-field"><span className="visually-hidden">Buscar laboratório ou recurso</span>
+              <input type="search" placeholder="Laboratório ou recurso" value={busca} onChange={e => setBusca(e.target.value)} />
+            </label>
+            <label className="filter-field"><span className="visually-hidden">Filtrar por bloco</span>
+              <select value={bloco} onChange={e => setBloco(e.target.value)}><option value="">Todos os blocos</option>
+                {blocos.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </label>
+            <label className="filter-field"><span className="visually-hidden">Filtrar por capacidade</span>
+              <select value={capacidade} onChange={e => setCapacidade(e.target.value)}><option value="">Todas as capacidades</option>
+                {capacidades.map(c => <option key={c} value={c}>{c} pessoas</option>)}
+              </select>
+            </label>
+            <label className="filter-field"><span className="visually-hidden">Filtrar por recurso associado</span>
+              <select value={recurso} onChange={e => setRecurso(e.target.value)}><option value="">Todos os recursos</option>
+                {recursos.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </label>
+          </section>
+          <p className="catalog-data-note">O filtro por tipo de uso não está disponível: essa informação não foi fornecida.</p>
+          <p role="status">{filtrados.length} espaços encontrados.</p>
+          {!espacos.length ? <p className="empty-state">Nenhum espaço retornado pela API para sua conta.</p>
+            : !filtrados.length ? <div className="empty-state"><p>Nenhum laboratório corresponde à busca e aos filtros.</p>
+              <button type="button" className="button" onClick={() => { setBusca(''); setBloco(''); setCapacidade(''); setRecurso('') }}>Limpar filtros</button>
+            </div> : <section className="lab-grid" aria-label="Laboratórios">
+              {filtrados.map(espaco => <CartaoEspaco key={espaco.id} espaco={espaco} />)}
+            </section>}
+        </>}
+    </main>
+  </>
 }
-
-

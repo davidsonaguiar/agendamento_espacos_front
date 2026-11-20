@@ -1,11 +1,10 @@
 import { Link, Outlet } from 'react-router-dom'
-import { obterUsuarioAutenticado } from '../services/autenticacao'
-import type { PerfilUsuario } from '../types/autenticacao'
+import { useAcessoGestor } from '../gestao/contextoGestor'
 
-export function RotaPerfil({ perfil }: { perfil: PerfilUsuario }) {
-  const usuario = obterUsuarioAutenticado()
-
-  if (usuario?.perfil !== perfil) {
+export function RotaPerfil() {
+  const acesso = useAcessoGestor()
+  if (!acesso) return null
+  if (!acesso.administrador && acesso.espacos?.length === 0) {
     return (
       <main className="access-feedback" role="alert">
         <h1>Acesso restrito</h1>

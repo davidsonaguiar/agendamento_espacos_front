@@ -524,3 +524,40 @@
     width: 100%;
   }
 }
+
+.indicadores { margin-bottom: 24px; }
+.acoes { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.pagina button:not(.botaoAba) {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: white;
+  color: var(--color-primary-dark);
+  font: inherit;
+  cursor: pointer;
+}
+.pagina button:disabled { opacity: .6; cursor: wait; }
+.pagina button:focus-visible, .pagina textarea:focus-visible { outline: 3px solid #307d65; outline-offset: 2px; }
+.cartao, .dialogo {
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: white;
+  overflow-wrap: anywhere;
+}
+.cartao { margin-block: 12px; }
+.cartao h3, .dialogo h2 { margin-top: 0; }
+.dialogo { width: min(30rem, calc(100% - 32px)); max-height: calc(100dvh - 32px); color: inherit; }
+.dialogo::backdrop { background: rgb(20 35 30 / .52); }
+.dialogo fieldset { min-width: 0; margin: 0 0 16px; padding: 0; border: 0; }
+.dialogo label { margin-bottom: 10px; }
+.campo textarea { width: 100%; min-height: 84px; padding: 8px; border: 1px solid var(--color-border); border-radius: 8px; font: inherit; resize: vertical; }
+.dialogo button[type='submit'] { background: var(--color-primary); color: white; }
+@media (max-width: 560px) {
+  .botaoAba { flex: 1; padding-inline: 6px; font-size: 14px; }
+  .campo { min-width: min(100%, 160px); }
+}
+.cartao details { margin-top: 12px; }
+.cartao summary { cursor: pointer; font-weight: 600; padding-block: 6px; }
+.cartao details p button { margin-inline-start: 8px; }

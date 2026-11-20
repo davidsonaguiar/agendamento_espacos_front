@@ -11,21 +11,20 @@ async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInva
   const usuarioDaSessao = { ...usuario, perfil: opcoes.perfil ?? 'Membro' }
   const chamadas: { caminho: string; corpo: unknown; authorization?: string }[] = []
   // Na composição com o catálogo, o login também monta a consulta de espaços.
+  const espacos = [{ id: 7, nome: 'Laboratório Existente', descricao: null as string | null, capacidade: 20, bloco: 'Bloco C', disponibilidade: true }]
   await page.route('**/espacos/**', async route => {
     const request = route.request()
     const caminho = new URL(request.url()).pathname
     chamadas.push({ caminho, corpo: request.postDataJSON(), authorization: request.headers().authorization })
     if (request.method() === 'POST') {
-      return route.fulfill({
-        status: 201,
-        json: { id: 8, nome: 'Laboratório de Teste', descricao: 'Bancadas para aulas', capacidade: 24, bloco: 'Bloco D', disponibilidade: true },
-      })
+      const criado = { id: 8, ...request.postDataJSON() }
+      espacos.push(criado)
+      return route.fulfill({ status: 201, json: criado })
     }
-    return route.fulfill({
-      status: 200,
-      json: [{ id: 7, nome: 'Laboratório Existente', descricao: null, capacidade: 20, bloco: 'Bloco C', disponibilidade: true }],
-    })
+    return route.fulfill({ json: espacos })
   })
+  await page.route('**/solicitacoes/**', route => route.fulfill({ json: [] }))
+  await page.route('**/agendamentos/**', route => route.fulfill({ json: [] }))
   await page.route('**/usuarios/**', async route => {
     const request = route.request()
     const caminho = new URL(request.url()).pathname
@@ -100,7 +99,7 @@ test('administrador acessa o painel do gestor', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Painel do gestor' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Aprovações' })).toBeVisible()
   await page.getByRole('tab', { name: 'Agenda' }).click()
-  await expect(page.getByText('Nenhuma reserva carregada.')).toBeVisible()
+  await expect(page.getByText('Nenhuma reserva confirmada neste período.')).toBeVisible()
 })
 
 test('administrador lista e cadastra laboratório pela API', async ({ page }) => {
@@ -152,10 +151,20 @@ test('gestor consegue acessar sair em telas menores', async ({ page }) => {
 
 test('datas livres do calendário sempre apresentam horários para selecionar', async ({ page }) => {
   await simularApi(page, { autenticado: true })
-  await page.goto('/laboratorios/1/agendamento')
+  await page.clock.install({ time: new Date('2027-02-10T08:00:00') })
+  await page.route('**/agendamentos/horarios-disponiveis?**', route => {
+    const query = new URL(route.request().url()).searchParams
+    expect(query.get('id_espaco')).toBe('7')
+    const mes = query.get('data_fim')!.slice(0, 7)
+    return route.fulfill({ json: ['15', '20'].map(dia => ({
+      data_hora_inicio: mes + '-' + dia + 'T09:00:00', data_hora_fim: mes + '-' + dia + 'T10:00:00',
+    })) })
+  })
+  await page.goto('/laboratorios/7/agendamento')
 
   for (let mes = 0; mes < 4; mes += 1) {
     const diasLivres = page.locator('button.booking-calendar__day--livre:not([disabled])')
+    await expect(diasLivres).toHaveCount(2)
     const quantidade = await diasLivres.count()
     for (let dia = 0; dia < quantidade; dia += 1) {
       await diasLivres.nth(dia).click()
@@ -166,7 +175,10 @@ test('datas livres do calendário sempre apresentam horários para selecionar', 
 })
 
 test('simulador local permite o ciclo professor → solicitação → decisão do gestor', async ({ page }) => {
-  test.skip(process.env.VITE_LOCAL_SIMULATOR !== 'true', 'Execute com VITE_LOCAL_SIMULATOR=true.')
+  const chamadasApi: string[] = []
+  page.on('request', req => {
+    if (/^\/(usuarios|espacos|agendamentos|solicitacoes)\//.test(new URL(req.url()).pathname)) chamadasApi.push(req.url())
+  })
   await page.goto('/login')
   await page.evaluate(() => localStorage.clear())
   await page.getByLabel('E-mail ou CPF').fill('professor@teste.local')
@@ -196,6 +208,7 @@ test('simulador local permite o ciclo professor → solicitação → decisão d
   await expect(page.locator('p').filter({ hasText: 'Finalidade: Aula de teste local' })).toBeVisible()
   await page.getByRole('button', { name: 'Aprovar' }).click()
   await expect(page.getByText('Aprovado', { exact: true })).toBeVisible()
+  expect(chamadasApi).toEqual([])
 })
 
 test('credenciais incorretas mostram erro sem abrir telas protegidas', async ({ page }) => {
@@ -339,4 +352,46 @@ test('link expirado permite solicitar outro sem levar o erro e a senha', async (
   await expect(page).toHaveURL(/\/recuperar-senha$/)
   await expect(page.getByLabel('E-mail cadastrado')).toBeEmpty()
   await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('membro envia um intervalo do catálogo e consulta o resultado na agenda pessoal', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.clock.install({ time: new Date('2027-02-10T08:00:00') })
+  await simularApi(page, { autenticado: true })
+  const dia = '2027-02-18'
+  const horarios = ['09', '10', '13'].map(h => ({
+    data_hora_inicio: dia + 'T' + h + ':00:00',
+    data_hora_fim: dia + 'T' + String(Number(h) + 1) + ':00:00',
+  }))
+  await page.route('**/agendamentos/horarios-disponiveis?**', route => route.fulfill({ json: horarios }))
+  const pedido = { id: 92, id_espaco: 7, id_solicitante: 1, finalidade: 'Pesquisa de campo', status: 'Pendente',
+    espaco: { nome: 'Laboratório Existente' }, horarios: [{ data_reserva: dia, hora_inicio: '09:00:00', hora_fim: '11:00:00' }],
+    interacoes: [] }
+  let criados = 0
+  await page.route('**/solicitacoes/', async route => {
+    if (route.request().method() === 'POST') {
+      expect(route.request().postDataJSON()).toEqual({ finalidade: pedido.finalidade, id_espaco: 7, horarios: pedido.horarios })
+      criados++
+      return route.fulfill({ status: 201, json: pedido })
+    }
+    return route.fulfill({ json: [pedido, { ...pedido, id: 93, id_solicitante: 5, finalidade: 'Outro solicitante' }] })
+  })
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Ver laboratório' }).click()
+  await page.getByRole('link', { name: 'Solicitar agendamento' }).click()
+  await page.getByRole('button', { name: '18/02/2027' }).click()
+  await page.getByRole('button', { name: '09:00 – 10:00' }).click()
+  await expect(page.getByLabel('Término').locator('option')).toHaveCount(2)
+  await page.getByLabel('Término').selectOption(dia + 'T11:00:00')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+  await page.getByRole('link', { name: 'Continuar para os detalhes' }).click()
+  await page.getByLabel('Finalidade da solicitação').fill(pedido.finalidade)
+  await page.getByRole('button', { name: 'Enviar solicitação' }).click()
+  await expect(page).toHaveURL(/\/meus-agendamentos$/)
+  await expect(page.getByText(pedido.finalidade)).toBeVisible()
+  await expect(page.getByText('Outro solicitante')).toHaveCount(0)
+  expect(criados).toBe(1)
+  pedido.status = 'Aprovado'
+  await page.getByRole('button', { name: 'Atualizar solicitações' }).click()
+  await expect(page.getByRole('article')).toContainText('Aprovado')
 })

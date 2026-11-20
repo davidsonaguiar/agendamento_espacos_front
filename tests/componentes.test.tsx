@@ -16,21 +16,24 @@ beforeEach(() => {
   autenticado = false
   perfilUsuario = 'Membro'
   chamadas = []
+  let espacos: unknown[] = []
   globalThis.fetch = async (input, options) => {
     const url = String(input)
     chamadas.push({ url, body: options?.body ? JSON.parse(String(options.body)) : null })
     if (new URL(url).pathname === '/espacos/') {
       if (options?.method === 'POST') {
-        return Response.json({
+        const criado = {
           id: 9,
           nome: 'Laboratório de Teste',
           descricao: 'Bancadas para aulas',
           capacidade: 24,
           bloco: 'Bloco D',
           disponibilidade: true,
-        }, { status: 201 })
+        }
+        espacos = [criado]
+        return Response.json(criado, { status: 201 })
       }
-      return Response.json([])
+      return Response.json(espacos)
     }
     if (url.endsWith('/login')) autenticado = true
     if (url.endsWith('/logout')) { autenticado = false; return new Response(null, { status: 204 }) }
@@ -90,7 +93,7 @@ test('administrador autenticado pode abrir o painel do gestor', async () => {
   abrir('/admin')
   await screen.findByRole('heading', { name: 'Painel do gestor' })
   assert.ok(screen.getByRole('link', { name: 'Painel do gestor' }))
-  assert.ok(screen.getByRole('tab', { name: 'Aprovações' }))
+  assert.ok(await screen.findByRole('tab', { name: 'Aprovações' }))
 })
 
 test('administrador cadastra laboratório com o contrato da API', async () => {
@@ -98,7 +101,7 @@ test('administrador cadastra laboratório com o contrato da API', async () => {
   const user = userEvent.setup()
   abrir('/admin')
   await screen.findByRole('heading', { name: 'Painel do gestor' })
-  await user.click(screen.getByRole('tab', { name: 'Laboratórios' }))
+  await user.click(await screen.findByRole('tab', { name: 'Laboratórios' }))
   await screen.findByRole('heading', { name: 'Cadastrar laboratório' })
   await user.type(screen.getByLabelText('Nome *'), 'Laboratório de Teste')
   await user.type(screen.getByLabelText('Descrição'), 'Bancadas para aulas')

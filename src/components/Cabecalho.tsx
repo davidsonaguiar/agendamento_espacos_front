@@ -2,8 +2,12 @@ import { useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { desconectarUsuario, obterUsuarioAutenticado } from '../services/autenticacao'
 
+import { useAcessoGestor } from '../gestao/contextoGestor'
+
 export function Cabecalho() {
   const { pathname } = useLocation()
+  const acesso = useAcessoGestor()
+  const gestor = acesso?.administrador || Boolean(acesso?.espacos?.length)
   const navigate = useNavigate()
   const [saindo, setSaindo] = useState(false)
   const secaoLaboratorios = pathname === '/' || pathname.startsWith('/laboratorios/')
@@ -32,10 +36,10 @@ export function Cabecalho() {
           <span className="brand__mark" aria-hidden="true">L</span>
           <span className="brand__name">LabAgenda</span>
         </Link>
-        <nav className={`site-nav${usuario?.perfil === 'Administrador' ? ' site-nav--admin' : ''}`} aria-label="Navegação principal">
+        <nav className={`site-nav${gestor ? ' site-nav--admin' : ''}`} aria-label="Navegação principal">
           <Link className={`site-nav__link${secaoLaboratorios ? ' site-nav__link--active' : ''}`} to="/" aria-current={pathname === '/' ? 'page' : secaoLaboratorios ? 'location' : undefined}>Laboratórios</Link>
           <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' site-nav__link--active' : ''}`} to="/meus-agendamentos">Agendamentos</NavLink>
-          {usuario?.perfil === 'Administrador' && (
+          {gestor && (
             <NavLink className={({ isActive }) => `site-nav__link${isActive ? ' site-nav__link--active' : ''}`} to="/admin">Painel do gestor</NavLink>
           )}
           <span className="user-avatar" aria-label="Perfil de usuário" title={usuario?.nome_completo ?? 'Usuário'}>{iniciais}</span>
