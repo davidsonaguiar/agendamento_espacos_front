@@ -1,4 +1,4 @@
-﻿export interface RecursoResposta {
+export interface RecursoResposta {
   id: number
   nome: string
   tipo: string
@@ -22,9 +22,12 @@ export interface PausaFuncionamentoResposta {
   motivo: string
   id_espaco: number
 }
+export type PerfilEspaco = 'Coordenador' | 'Monitor'
+
 export interface UsuarioVinculadoResposta {
   id_usuario: number
   nome_completo: string
+  perfil_espaco?: PerfilEspaco | null
 }
 export interface EspacoResposta {
   id: number

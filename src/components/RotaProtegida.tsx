@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
-import { ANTECEDENCIA_RENOVACAO_MS, obterExpiracaoToken, obterTokenAcesso, verificarSessao } from '../services/autenticacao'
+import { ANTECEDENCIA_RENOVACAO_MS, eventoSessaoEncerrada, eventoSessaoGestor, obterExpiracaoToken, obterTokenAcesso, verificarSessao } from '../services/autenticacao'
+
+import { AcessoGestor } from '../gestao/AcessoGestor'
+import type { UsuarioAutenticado } from '../types/autenticacao'
 
 type EstadoSessao = 'verificando' | 'autorizado' | 'sem-sessao' | 'sem-permissao' | 'indisponivel'
 
 export function RotaProtegida({ somenteAdministrador = false }: { somenteAdministrador?: boolean } = {}) {
+  const [conta, setConta] = useState<UsuarioAutenticado | null>(null)
   const location = useLocation()
   const [estado, setEstado] = useState<EstadoSessao>('verificando')
   const [tentativa, setTentativa] = useState(0)
@@ -18,14 +22,19 @@ export function RotaProtegida({ somenteAdministrador = false }: { somenteAdminis
       if (!ativo || conferindo) return
       conferindo = true
       if (temporizador !== undefined) clearTimeout(temporizador)
-      if (exibirCarregamento) setEstado('verificando')
+      if (exibirCarregamento) {
+        setConta(null)
+        setEstado('verificando')
+      }
       try {
         const usuario = await verificarSessao()
         if (!ativo) return
         if (!usuario || !obterTokenAcesso()) {
+          setConta(null)
           setEstado('sem-sessao')
           return
         }
+        setConta(usuario)
         setEstado(somenteAdministrador && usuario.perfil !== 'Administrador' ? 'sem-permissao' : 'autorizado')
         const expiracao = obterExpiracaoToken(obterTokenAcesso())
         if (expiracao !== null) {
@@ -34,19 +43,39 @@ export function RotaProtegida({ somenteAdministrador = false }: { somenteAdminis
           temporizador = setTimeout(() => { void conferir(false) }, atraso)
         }
       } catch {
-        if (ativo) setEstado('indisponivel')
+        if (ativo) {
+          setConta(null)
+          setEstado('indisponivel')
+        }
       } finally {
         conferindo = false
       }
     }
 
     const aoFocar = () => { void conferir(false) }
-    const aoMostrar = () => { if (document.visibilityState === 'visible') aoFocar() }
+    const aoMostrar = () => {
+      if (document.visibilityState === 'visible') aoFocar()
+    }
+    const exigirLogin = () => {
+      ativo = false
+      if (temporizador !== undefined) clearTimeout(temporizador)
+      setConta(null)
+      setEstado('sem-sessao')
+    }
+    const reverSessao = () => {
+      setConta(null)
+      setEstado('verificando')
+      setTentativa(n => n + 1)
+    }
+    window.addEventListener(eventoSessaoEncerrada, exigirLogin)
+    window.addEventListener(eventoSessaoGestor, reverSessao)
     window.addEventListener('focus', aoFocar)
     document.addEventListener('visibilitychange', aoMostrar)
     void conferir()
     return () => {
       ativo = false
+      window.removeEventListener(eventoSessaoEncerrada, exigirLogin)
+      window.removeEventListener(eventoSessaoGestor, reverSessao)
       window.removeEventListener('focus', aoFocar)
       document.removeEventListener('visibilitychange', aoMostrar)
       if (temporizador !== undefined) clearTimeout(temporizador)
@@ -62,7 +91,7 @@ export function RotaProtegida({ somenteAdministrador = false }: { somenteAdminis
   if (estado === 'sem-permissao') {
     return <main className="access-feedback" role="alert">
       <h1>Acesso restrito</h1>
-      <p>O painel visual está disponível somente para administradores nesta etapa.</p>
+      <p>Esta área está disponível somente para administradores.</p>
       <Link to="/">Voltar ao catálogo</Link>
     </main>
   }
@@ -73,5 +102,5 @@ export function RotaProtegida({ somenteAdministrador = false }: { somenteAdminis
       <button type="button" onClick={() => setTentativa(n => n + 1)}>Tentar novamente</button>
     </main>
   }
-  return <Outlet />
+  return conta && <AcessoGestor key={`${conta.id}:${conta.perfil}`} usuario={conta}><Outlet /></AcessoGestor>
 }

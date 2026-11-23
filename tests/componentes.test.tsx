@@ -1,8 +1,10 @@
+import { RotaPerfil } from '../src/components/RotaPerfil'
+import { ContextoGestor } from '../src/gestao/contextoGestor'
 import assert from 'node:assert/strict'
 import { test, afterEach, beforeEach } from 'node:test'
 import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Router, Link, useLocation } from 'react-router-dom'
+import { MemoryRouter, Router, Link, useLocation, Route, Routes } from 'react-router-dom'
 import App from '../src/App'
 import { MeusAgendamentos } from '../src/pages/MeusAgendamentos'
 import { encerrarSessao } from '../src/services/autenticacao'
@@ -42,6 +44,7 @@ beforeEach(() => {
     if (url.endsWith('/logout')) { autenticado = false; return new Response(null, { status: 204 }) }
     if (url.endsWith('/usuarios/')) return Response.json(usuario, { status: 201 })
     if (!autenticado) return Response.json({ detail: 'Sessão expirada' }, { status: 401 })
+    if (new URL(url).pathname === '/agendamentos/') return Response.json([])
     if (new URL(url).pathname === '/solicitacoes/') {
       if (options?.method === 'GET') return Response.json(solicitacoesResposta)
       assert.equal(options?.method, 'POST')
@@ -55,6 +58,11 @@ beforeEach(() => {
       return Response.json(horariosResposta)
     }
     if (new URL(url).pathname === '/espacos/') {
+      if (options?.method === 'POST') {
+        const criado = { ...espacosTeste[0], ...JSON.parse(String(options.body)), id: 9 }
+        espacosResposta = [...espacosResposta as typeof espacosTeste, criado]
+        return Response.json(criado, { status: 201 })
+      }
       assert.match(new Headers(options?.headers).get('Authorization') ?? '', /^Bearer /)
       return Response.json(espacosResposta)
     }
@@ -65,6 +73,12 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 const abrir = (caminho: string) => render(<MemoryRouter initialEntries={[caminho]}><App /></MemoryRouter>)
+function iniciarSessao(perfil: 'Membro' | 'Administrador') {
+  autenticado = true
+  sessionStorage.setItem('labagenda.access_token', jwt())
+  sessionStorage.setItem('labagenda.usuario', JSON.stringify({ ...usuario, perfil }))
+  usuarioResposta = { ...usuario, perfil }
+}
 
 for (const caminho of ['/', '/laboratorios/1', '/laboratorios/1/agendamento', '/laboratorios/1/agendamento/detalhes', '/meus-agendamentos', '/admin']) {
   test(`protege rota ${caminho} sem sessão`, async () => {
@@ -92,6 +106,50 @@ test('login preserva destino da agenda, filtros e logout', async () => {
   await screen.findByText('Sessão encerrada.')
   assert.equal(sessionStorage.getItem('labagenda.access_token'), null)
   assert.equal(chamadas.filter(c => c.url.endsWith('/logout')).length, 1)
+})
+
+test('membro autenticado não vê nem acessa o painel do gestor', async () => {
+  iniciarSessao('Membro')
+  abrir('/admin')
+  await screen.findByRole('heading', { name: 'Acesso restrito' })
+  assert.equal(screen.queryByRole('heading', { name: 'Painel do gestor' }), null)
+  assert.equal(screen.queryByRole('link', { name: 'Painel do gestor' }), null)
+})
+
+test('administrador autenticado pode abrir o painel do gestor', async () => {
+  iniciarSessao('Administrador')
+  abrir('/admin')
+  await screen.findByRole('heading', { name: 'Painel do gestor' })
+  assert.ok(screen.getByRole('link', { name: 'Painel do gestor' }))
+  assert.ok(await screen.findByRole('tab', { name: 'Aprovações' }))
+})
+
+test('administrador cadastra laboratório com o contrato da API', async () => {
+  iniciarSessao('Administrador')
+  const user = userEvent.setup()
+  abrir('/admin')
+  await screen.findByRole('heading', { name: 'Painel do gestor' })
+  await user.click(await screen.findByRole('tab', { name: 'Laboratórios' }))
+  await screen.findByRole('heading', { name: 'Cadastrar laboratório' })
+  await user.type(screen.getByLabelText('Nome *'), 'Laboratório de Teste')
+  await user.type(screen.getByLabelText('Descrição'), 'Bancadas para aulas')
+  await user.type(screen.getByLabelText('Capacidade'), '24')
+  await user.type(screen.getByLabelText('Bloco'), 'Bloco D')
+  await user.click(screen.getByRole('button', { name: 'Cadastrar laboratório' }))
+
+  await waitFor(() => assert.equal(chamadas.filter(c => new URL(c.url).pathname === '/espacos/' && c.method === 'POST').length, 1))
+  assert.deepEqual(chamadas.find(c => new URL(c.url).pathname === '/espacos/' && c.method === 'POST')?.body, {
+    nome: 'Laboratório de Teste', descricao: 'Bancadas para aulas', capacidade: 24, bloco: 'Bloco D', disponibilidade: true,
+  })
+  await screen.findByText('Espaço "Laboratório de Teste" cadastrado com sucesso.')
+  assert.ok(screen.getByText('Laboratório de Teste'))
+  assert.deepEqual(chamadas.find(chamada => chamada.url.endsWith('/espacos/') && chamada.body)?.body, {
+    nome: 'Laboratório de Teste',
+    descricao: 'Bancadas para aulas',
+    capacidade: 24,
+    bloco: 'Bloco D',
+    disponibilidade: true,
+  })
 })
 
 test('cadastro normaliza CPF, não envia perfil e valida confirmação', async () => {
@@ -215,19 +273,19 @@ test('painel bloqueia Membro mesmo com Administrador adulterado no armazenamento
   await screen.findByRole('heading', { name: 'Acesso restrito' })
   assert.equal(screen.queryByRole('heading', { name: 'Painel do gestor' }), null)
   assert.ok(chamadas.some(c => c.url.endsWith('/me')))
-  assert.equal(chamadas.some(c => /\/(solicitacoes|agendamentos|espacos)/.test(new URL(c.url).pathname)), false)
+  assert.equal(chamadas.some(c => /\/(solicitacoes|agendamentos)/.test(new URL(c.url).pathname)), false)
 })
 
-test('Administrador abre painel visual, alterna abas e mantém logout real sem API administrativa', async () => {
+test('Administrador abre painel conectado, alterna abas e mantem logout real sem mutacoes administrativas', async () => {
   autenticado = true
   usuarioResposta = { ...usuario, perfil: 'Administrador' }
   abrir('/admin')
   await screen.findByRole('heading', { name: 'Painel do gestor' })
-  assert.ok(screen.getByText(/Nenhuma.*registrada/))
+  assert.ok(await screen.findByText(/Nenhuma solicitação/))
   const user = userEvent.setup()
   await user.click(screen.getByRole('tab', { name: /^Agenda$/ }))
   assert.ok(screen.getByRole('heading', { name: 'Agenda mestre' }))
-  assert.equal(chamadas.some(c => /\/(solicitacoes|agendamentos|espacos)/.test(new URL(c.url).pathname)), false)
+  assert.ok(chamadas.filter(c => /\/(solicitacoes|agendamentos|espacos)/.test(new URL(c.url).pathname)).every(c => c.method === 'GET'))
   await user.click(screen.getByRole('button', { name: 'Sair' }))
   await screen.findByText('Sessão encerrada.')
   assert.equal(chamadas.filter(c => c.url.endsWith('/logout')).length, 1)
@@ -1256,8 +1314,46 @@ test('revalidação de aba mantém restrição administrativa após mudança de 
     await screen.findByRole('heading', { name: 'Acesso restrito' })
     assert.equal(screen.queryByRole('heading', { name: 'Painel do gestor' }), null)
     assert.ok(chamadas.filter(c => c.url.endsWith('/me')).length >= 2)
-    assert.equal(chamadas.some(c => /\/(solicitacoes|agendamentos|espacos)/.test(new URL(c.url).pathname)), false)
+    assert.ok(chamadas.filter(c => /\/(solicitacoes|agendamentos|espacos)/.test(new URL(c.url).pathname)).every(c => c.method === 'GET'))
   } finally {
     Reflect.deleteProperty(document, 'visibilityState')
   }
+})
+
+function montarPerfil(acesso: React.ContextType<typeof ContextoGestor>) {
+  return <MemoryRouter initialEntries={['/admin']}>
+    <ContextoGestor.Provider value={acesso}>
+      <Routes><Route element={<RotaPerfil />}><Route path="/admin" element={<h1>Administracao protegida</h1>} /></Route></Routes>
+    </ContextoGestor.Provider>
+  </MemoryRouter>
+}
+for (const [nome, acesso, autorizado] of [
+  ['sem contexto', null, false],
+  ['carregando administrador', { administrador: true, atualizar() {} }, false],
+  ['administrador confirmado', { administrador: true, espacos: [], atualizar() {} }, true],
+  ['coordenador vinculado', { administrador: false, espacos: [espacosTeste[0]], atualizar() {} }, true],
+  ['membro sem vinculo', { administrador: false, espacos: [], atualizar() {} }, false],
+  ['falha mesmo com dados antigos', { administrador: true, espacos: [], erro: 'offline', atualizar() {} }, false],
+] as const) {
+  test('RotaPerfil impede montagem indevida: ' + nome, () => {
+    const valor = acesso as React.ContextType<typeof ContextoGestor>
+    render(montarPerfil(valor))
+    assert.equal(Boolean(screen.queryByRole('heading', { name: 'Administracao protegida' })), autorizado)
+    if (nome === 'sem contexto' || nome === 'carregando administrador') assert.ok(screen.getByRole('status'))
+    if (nome === 'falha mesmo com dados antigos') assert.ok(screen.getByRole('alert'))
+  })
+}
+test('RotaPerfil nova tentativa nao libera acesso antes da confirmacao e troca limpa painel', async () => {
+  let tentativas = 0
+  const atualizar = () => { tentativas++ }
+  const tela = render(montarPerfil({ administrador: false, erro: 'offline', atualizar }))
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Tentar novamente' }))
+  assert.equal(tentativas, 1)
+  assert.equal(screen.queryByRole('heading', { name: 'Administracao protegida' }), null)
+  tela.rerender(montarPerfil({ administrador: true, espacos: [], atualizar }))
+  assert.ok(screen.getByRole('heading', { name: 'Administracao protegida' }))
+  tela.rerender(montarPerfil(null))
+  assert.equal(screen.queryByRole('heading', { name: 'Administracao protegida' }), null)
+  tela.rerender(montarPerfil({ administrador: false, espacos: [], atualizar }))
+  assert.equal(screen.queryByRole('heading', { name: 'Administracao protegida' }), null)
 })

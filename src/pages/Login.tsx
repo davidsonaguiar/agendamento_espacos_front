@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutAutenticacao } from '../components/LayoutAutenticacao'
 import { autenticarUsuario, desconectarUsuario } from '../services/autenticacao'
+import { simuladorLocalAtivo } from '../services/sessaoSimulada'
 
 /** Retorno restrito às rotas protegidas existentes; nunca aceita outra origem. */
 export function destinoAposLogin(valor: unknown): string {
@@ -11,7 +12,7 @@ export function destinoAposLogin(valor: unknown): string {
     const url = new URL(valor, 'https://labagenda.invalid')
     if (url.origin !== 'https://labagenda.invalid') return '/'
     // Não retorna às telas de autenticação nem a caminhos desconhecidos.
-    if (!/^\/(?:meus-agendamentos|laboratorios\/[1-9]\d*(?:\/agendamento(?:\/detalhes)?)?)?$/.test(url.pathname)) return '/'
+    if (!/^\/(?:admin|meus-agendamentos|laboratorios\/[1-9]\d*(?:\/agendamento(?:\/detalhes)?)?)?$/.test(url.pathname)) return '/'
     return url.pathname + url.search + url.hash
   } catch { return '/' }
 }
@@ -68,6 +69,9 @@ export function Login() {
       </div>
       <form className="login-form" onSubmit={handleSubmit}>
         {aviso && <p className="login-notice" role="status">{aviso}</p>}
+        {simuladorLocalAtivo && <p className="login-notice" role="note">
+          Simulador local ativo. Utilize somente contas fictícias; este modo não autentica na API.
+        </p>}
         {estado?.logoutPendente === true && <button type="button" className="login-submit" disabled={carregando} onClick={() => { void tentarLogout() }}>Tentar encerrar sessão novamente</button>}
         <label className="login-field">
           <span>E-mail ou CPF</span>

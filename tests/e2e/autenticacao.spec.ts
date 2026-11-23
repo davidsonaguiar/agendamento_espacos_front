@@ -11,8 +11,9 @@ const espacoApi = {
 }
 const token = (segundos = 900, agora = Date.now()) => `a.${Buffer.from(JSON.stringify({ exp: Math.floor(agora / 1000) + segundos })).toString('base64url')}.c`
 
-async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInvalido?: boolean; logoutFalha?: boolean; expiraEm?: number } = {}) {
+async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInvalido?: boolean; logoutFalha?: boolean; expiraEm?: number; perfil?: 'Membro' | 'Administrador' } = {}) {
   let autenticado = opcoes.autenticado ?? false
+  const usuarioDaSessao = { ...usuario, perfil: opcoes.perfil ?? 'Membro' }
   const chamadas: { caminho: string; corpo: unknown; authorization?: string }[] = []
   await page.route('**/usuarios/**', async route => {
     const request = route.request()
@@ -22,14 +23,14 @@ async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInva
     if (caminho === '/usuarios/login') {
       if (opcoes.loginInvalido) return json(401, { detail: 'Credenciais inválidas.' })
       autenticado = true
-      return json(200, { access_token: token(opcoes.expiraEm, await page.evaluate(() => Date.now())), token_type: 'bearer', usuario }, { 'set-cookie': 'refresh_token=simulado; HttpOnly; Path=/usuarios; SameSite=Lax' })
+      return json(200, { access_token: token(opcoes.expiraEm, await page.evaluate(() => Date.now())), token_type: 'bearer', usuario: usuarioDaSessao }, { 'set-cookie': 'refresh_token=simulado; HttpOnly; Path=/usuarios; SameSite=Lax' })
     }
     if (caminho === '/usuarios/refresh') return autenticado
-      ? json(200, { access_token: token(900, await page.evaluate(() => Date.now())), token_type: 'bearer', usuario })
+      ? json(200, { access_token: token(900, await page.evaluate(() => Date.now())), token_type: 'bearer', usuario: usuarioDaSessao })
       : json(401, { detail: 'Sessão expirada' })
     if (caminho === '/usuarios/recuperar-senha') return json(202, { detail: 'Instruções enviadas' })
     if (caminho === '/usuarios/redefinir-senha') return route.fulfill({ status: 204 })
-    if (caminho === '/usuarios/me') return autenticado ? json(200, usuario) : json(401, {})
+    if (caminho === '/usuarios/me') return autenticado ? json(200, usuarioDaSessao) : json(401, {})
     if (caminho === '/usuarios/') return json(201, usuario)
     if (caminho === '/usuarios/logout') {
       if (opcoes.logoutFalha) return route.abort('failed')
@@ -38,14 +39,21 @@ async function simularApi(page: Page, opcoes: { autenticado?: boolean; loginInva
     }
     return json(404, {})
   })
+  const espacos = [espacoApi]
   await page.route('**/espacos/**', async route => {
     const request = route.request()
     const url = new URL(request.url())
-    chamadas.push({ caminho: url.pathname + url.search, corpo: null, authorization: request.headers().authorization })
+    chamadas.push({ caminho: url.pathname + url.search, corpo: request.postDataJSON(), authorization: request.headers().authorization })
     if (!autenticado || !request.headers().authorization?.startsWith('Bearer ')) {
       return route.fulfill({ status: 401, json: { detail: 'Sessão expirada' } })
     }
-    return route.fulfill({ status: 200, json: Number(url.searchParams.get('skip')) === 0 ? [espacoApi] : [] })
+    if (request.method() === 'POST') {
+      const criado = { ...espacoApi, ...request.postDataJSON(), id: 78 }
+      espacos.push(criado)
+      return route.fulfill({ status: 201, json: criado })
+    }
+    expect(request.method()).toBe('GET')
+    return route.fulfill({ status: 200, json: Number(url.searchParams.get('skip')) === 0 ? espacos : [] })
   })
   await page.route('**/agendamentos/**', async route => {
     expect(route.request().method()).toBe('GET')
@@ -64,7 +72,7 @@ async function entrar(page: Page) {
   await page.getByRole('button', { name: 'Entrar', exact: true }).click()
 }
 
-for (const caminho of ['/', '/laboratorios/1', '/laboratorios/1/agendamento', '/laboratorios/1/agendamento/detalhes', '/meus-agendamentos']) {
+for (const caminho of ['/', '/laboratorios/1', '/laboratorios/1/agendamento', '/laboratorios/1/agendamento/detalhes', '/meus-agendamentos', '/admin']) {
   test(`bloqueia acesso sem sessão a ${caminho}`, async ({ page }) => {
     await simularApi(page)
     await page.goto(caminho)
@@ -88,6 +96,133 @@ test('login volta à agenda solicitada e mantém filtros e navegação dos coleg
   const cookies = await page.context().cookies()
   expect(cookies.find(c => c.name === 'refresh_token')?.httpOnly).toBe(true)
   expect(await page.evaluate(() => document.cookie)).not.toContain('refresh_token')
+})
+
+test('membro não acessa o painel do gestor', async ({ page }) => {
+  await simularApi(page, { autenticado: true, perfil: 'Membro' })
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'Acesso restrito' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Painel do gestor' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Painel do gestor' })).toHaveCount(0)
+})
+
+test('administrador acessa o painel do gestor', async ({ page }) => {
+  await simularApi(page, { autenticado: true, perfil: 'Administrador' })
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'Painel do gestor' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Painel do gestor' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Aprovações' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Agenda' }).click()
+  await expect(page.getByText('Nenhuma reserva confirmada neste período.')).toBeVisible()
+})
+
+test('administrador lista e cadastra laboratório pela API', async ({ page }) => {
+  const chamadas = await simularApi(page, { autenticado: true, perfil: 'Administrador' })
+  await page.goto('/admin')
+  await page.getByRole('tab', { name: 'Laboratórios' }).click()
+  await expect(page.getByRole('heading', { name: 'Laboratórios cadastrados' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: espacoApi.nome })).toBeVisible()
+
+  await page.getByLabel('Nome *').fill('Laboratório de Teste')
+  await page.getByLabel('Descrição').fill('Bancadas para aulas')
+  await page.getByLabel('Capacidade').fill('24')
+  await page.getByLabel('Bloco').fill('Bloco D')
+  await page.getByRole('button', { name: 'Cadastrar laboratório' }).click()
+
+  await expect(page.getByRole('status').filter({ hasText: 'cadastrado com sucesso' })).toHaveText('Espaço "Laboratório de Teste" cadastrado com sucesso.')
+  await expect(page.getByRole('heading', { name: 'Laboratório de Teste' })).toBeVisible()
+  const chamada = chamadas.find(item => item.caminho === '/espacos/' && item.corpo !== null)
+  expect(chamada?.corpo).toEqual({
+    nome: 'Laboratório de Teste',
+    descricao: 'Bancadas para aulas',
+    capacidade: 24,
+    bloco: 'Bloco D',
+    disponibilidade: true,
+  })
+  expect(chamada?.authorization).toMatch(/^Bearer /)
+})
+
+test('gestor consegue acessar sair em telas menores', async ({ page }) => {
+  await simularApi(page, { autenticado: true, perfil: 'Administrador' })
+  const botaoSair = page.getByRole('button', { name: 'Sair', exact: true })
+  for (const largura of [767, 390, 320]) {
+    await page.setViewportSize({ width: largura, height: 695 })
+    await page.goto('/admin')
+    await expect(botaoSair).toBeVisible()
+    const limites = await botaoSair.boundingBox()
+    if (!limites) throw new Error('O botão Sair não possui uma posição visível na página.')
+    expect(limites.x).toBeGreaterThanOrEqual(0)
+    expect(limites.x + limites.width).toBeLessThanOrEqual(largura)
+    if (largura <= 560) {
+      expect(limites.width).toBeGreaterThan(200)
+      expect(limites.height).toBeGreaterThanOrEqual(44)
+    }
+  }
+
+  await botaoSair.click()
+  await expect(page).toHaveURL(/\/login$/)
+})
+
+test('datas livres do calendário sempre apresentam horários para selecionar', async ({ page }) => {
+  await simularApi(page, { autenticado: true })
+  await page.clock.install({ time: new Date('2027-02-10T08:00:00') })
+  await page.route('**/agendamentos/horarios-disponiveis?**', route => {
+    const query = new URL(route.request().url()).searchParams
+    expect(query.get('id_espaco')).toBe('77')
+    const mes = query.get('data_fim')!.slice(0, 7)
+    return route.fulfill({ json: ['15', '20'].map(dia => ({
+      data_hora_inicio: mes + '-' + dia + 'T09:00:00', data_hora_fim: mes + '-' + dia + 'T10:00:00',
+    })) })
+  })
+  await page.goto('/laboratorios/77/agendamento')
+
+  for (let mes = 0; mes < 4; mes += 1) {
+    const diasLivres = page.locator('button.booking-calendar__day--livre:not([disabled])')
+    await expect(diasLivres).toHaveCount(2)
+    const quantidade = await diasLivres.count()
+    for (let dia = 0; dia < quantidade; dia += 1) {
+      await diasLivres.nth(dia).click()
+      await expect(page.locator('button.booking-time-slot:not([disabled])').first()).toBeVisible()
+    }
+    if (mes < 3) await page.getByRole('button', { name: 'Próximo mês' }).click()
+  }
+})
+
+test('simulador local permite o ciclo professor → solicitação → decisão do gestor', async ({ page }) => {
+  const chamadasApi: string[] = []
+  page.on('request', req => {
+    if (/^\/(usuarios|espacos|agendamentos|solicitacoes)\//.test(new URL(req.url()).pathname)) chamadasApi.push(req.url())
+  })
+  await page.goto('/login')
+  await page.evaluate(() => localStorage.clear())
+  await page.getByLabel('E-mail ou CPF').fill('professor@teste.local')
+  await page.getByLabel('Senha', { exact: true }).fill('Professor123!')
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Encontre o laboratório ideal' })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Ver laboratório' }).first().click()
+  await page.getByRole('link', { name: 'Solicitar agendamento' }).click()
+  await page.locator('button.booking-calendar__day--livre:not([disabled])').first().click()
+  const primeiroHorarioLivre = page.locator('button.booking-time-slot--livre').first()
+  await primeiroHorarioLivre.click()
+  await primeiroHorarioLivre.click()
+  await page.getByRole('button', { name: 'Continuar para os detalhes' }).click()
+  await page.getByLabel('Finalidade da solicitação *').fill('Aula de teste local')
+  await page.getByRole('button', { name: 'Revisar solicitação' }).click()
+  await page.getByRole('button', { name: 'Enviar solicitação de teste' }).click()
+  await expect(page).toHaveURL(/\/meus-agendamentos$/)
+  await expect(page.getByText('Aula de teste local')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Sair', exact: true }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  await page.getByLabel('E-mail ou CPF').fill('gestor@teste.local')
+  await page.getByLabel('Senha', { exact: true }).fill('Gestor123!')
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click()
+  await page.goto('/admin')
+  await expect(page.locator('p').filter({ hasText: 'Finalidade: Aula de teste local' })).toBeVisible()
+  await page.getByRole('button', { name: 'Aprovar' }).click()
+  await expect(page.getByText('Aprovado', { exact: true })).toBeVisible()
+  expect(chamadasApi).toEqual([])
 })
 
 test('credenciais incorretas mostram erro sem abrir telas protegidas', async ({ page }) => {
@@ -340,13 +475,10 @@ test('catálogo recupera 401 com refresh e repete somente a página que falhou',
     return route.fulfill({ status: 200, json: { access_token, token_type: 'bearer', usuario } })
   })
   const autorizacoes: string[] = []
-  const primeirasPaginasEntregues: number[] = []
-  page.on('response', response => {
-    const url = new URL(response.url())
-    if (url.pathname === '/espacos/' && url.searchParams.get('skip') === '0' && response.status() === 200) primeirasPaginasEntregues.push(0)
-  })
-  // StrictMode pode cancelar a primeira carga. O 401 ocorre na segunda página,
-  // alcançada apenas pela carga ativa; cancelamento inicial não conta como retry.
+  // Catalogo e AcessoGestor paginam independentemente (o segundo consulta
+  // vinculos para o cabecalho). Ambas as leituras devem compartilhar o refresh.
+  // O token antigo recebe 401 em toda consulta da segunda pagina; nao apenas
+  // na primeira chamada global, que poderia pertencer a qualquer consumidor.
   await page.route('**/espacos/**', async route => {
     const request = route.request()
     const url = new URL(request.url())
@@ -357,16 +489,19 @@ test('catálogo recupera 401 com refresh e repete somente a página que falhou',
     }
     expect(url.searchParams.get('skip')).toBe('100')
     autorizacoes.push(request.headers().authorization)
-    return route.fulfill(autorizacoes.length === 1
+    return route.fulfill(request.headers().authorization === `Bearer ${tokens[0]}`
       ? { status: 401, json: { detail: 'Access token expirado' } }
       : { status: 200, json: [espacoApi] })
   })
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Laboratório API 77', exact: true })).toBeVisible()
   expect(rotacoes).toBe(2)
-  expect(autorizacoes).toEqual([`Bearer ${tokens[0]}`, `Bearer ${tokens[1]}`])
+  expect(autorizacoes).toContain(`Bearer ${tokens[0]}`)
+  expect(autorizacoes).toContain(`Bearer ${tokens[1]}`)
+  expect(autorizacoes.every(acesso => tokens.some(valor => acesso === `Bearer ${valor}`))).toBe(true)
   expect(tokens[0]).not.toBe(tokens[1])
-  expect(primeirasPaginasEntregues).toHaveLength(1)
+  // Verifica o resultado completo, sem impor contagem global aos consumidores.
+  await expect(page.getByRole('heading', { name: /^Espaço paginado \d+$/ })).toHaveCount(100)
 })
 
 
@@ -550,4 +685,50 @@ test('link expirado permite solicitar outro sem levar o erro e a senha', async (
   await expect(page).toHaveURL(/\/recuperar-senha$/)
   await expect(page.getByLabel('E-mail cadastrado')).toBeEmpty()
   await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('membro envia um intervalo do catálogo e consulta o resultado na agenda pessoal', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.clock.install({ time: new Date('2027-02-10T08:00:00') })
+  await simularApi(page, { autenticado: true })
+  const dia = '2027-02-18'
+  const horarios = ['09', '10', '13'].map(h => ({
+    data_hora_inicio: dia + 'T' + h + ':00:00',
+    data_hora_fim: dia + 'T' + String(Number(h) + 1) + ':00:00',
+  }))
+  await page.route('**/agendamentos/horarios-disponiveis?**', route => route.fulfill({ json: horarios }))
+  const horariosSelecionados = [{ data_reserva: dia, hora_inicio: '09:00:00', hora_fim: '11:00:00' }]
+  const pedido = { ...consultaAgenda(92), id_espaco: 77, finalidade: 'Pesquisa de campo',
+    espaco: { ...consultaAgenda().espaco, id: 77, nome: espacoApi.nome },
+    horarios: horariosSelecionados.map(h => ({ id: 92, ...h })) }
+
+  let criados = 0
+  await page.route('**/solicitacoes/', async route => {
+    if (route.request().method() === 'POST') {
+      expect(route.request().postDataJSON()).toEqual({ finalidade: pedido.finalidade, id_espaco: 77, horarios: horariosSelecionados })
+      criados++
+      return route.fulfill({ status: 201, json: pedido })
+    }
+    return route.fulfill({ json: [pedido, { ...pedido, id: 93, id_solicitante: 5, finalidade: 'Outro solicitante' }] })
+  })
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Ver laboratório' }).click()
+  await page.getByRole('link', { name: 'Consultar horários disponíveis' }).click()
+  await page.getByRole('button', { name: /18 de fevereiro de 2027:.*dispon/  }).click()
+  await page.getByRole('button', { name: /09:00–10:00/ }).click()
+  await page.getByRole('button', { name: /10:00–11:00/ }).click()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+  await page.getByRole('button', { name: 'Continuar para os detalhes' }).click()
+  await page.getByLabel('Finalidade da solicitação').fill(pedido.finalidade)
+  await page.getByRole('button', { name: 'Revisar solicitação' }).click()
+  await page.getByRole('button', { name: 'Enviar solicitação', exact: true }).click()
+  await expect(page.getByText('Solicitação enviada e aguardando análise.')).toBeVisible()
+  await page.getByRole('link', { name: 'Consultar minhas solicitações' }).click()
+  await expect(page).toHaveURL(/\/meus-agendamentos$/)
+  await expect(page.getByText(pedido.finalidade)).toBeVisible()
+  await expect(page.getByText('Outro solicitante')).toHaveCount(0)
+  expect(criados).toBe(1)
+  pedido.status = 'Aprovado'
+  await page.getByRole('button', { name: 'Atualizar' }).click()
+  await expect(page.getByRole('article')).toContainText('Aprovado')
 })

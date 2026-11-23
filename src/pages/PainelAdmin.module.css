@@ -218,6 +218,265 @@
   text-align: center;
 }
 
+.formularioEspaco,
+.listaEspacos {
+  margin-top: 24px;
+  padding: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.formularioEspaco h3,
+.tituloListaEspacos h3 {
+  margin: 0;
+  color: #1d2926;
+  font-size: 19px;
+}
+
+.camposEspaco {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.checkboxEspaco {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #34413c;
+  font-size: 14px;
+}
+
+.checkboxEspaco input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
+}
+
+.dicaEspaco {
+  margin: 14px 0 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.botaoEspaco,
+.botaoEspacoSecundario {
+  min-height: 42px;
+  padding: 9px 16px;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.botaoEspaco {
+  margin-top: 16px;
+}
+
+.botaoEspaco:disabled,
+.botaoEspacoSecundario:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.botaoEspacoSecundario {
+  background: #fff;
+  color: var(--color-primary);
+}
+
+.sucessoEspaco {
+  margin: 14px 0 0;
+  color: #166534;
+  font-weight: 600;
+}
+
+.tituloListaEspacos {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.listaEspacosItens {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.itemEspaco {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.itemEspaco h4 {
+  margin: 0 0 5px;
+  color: #1d2926;
+}
+
+.itemEspaco p {
+  margin: 4px 0;
+  color: var(--color-muted);
+  line-height: 1.45;
+}
+
+.espacoDisponivel,
+.espacoIndisponivel {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.espacoDisponivel {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.espacoIndisponivel {
+  background: #f1f3f2;
+  color: #56635e;
+}
+
+.erro {
+  margin: 18px 0;
+  color: #a32121;
+}
+
+.listaSolicitacoes {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.solicitacao {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.dadosSolicitacao {
+  min-width: 0;
+}
+
+.dadosSolicitacao h3 {
+  margin: 0 0 8px;
+  color: #1d2926;
+  font-size: 17px;
+}
+
+.dadosSolicitacao p {
+  margin: 4px 0;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.statusSolicitacao {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #f1f3f2;
+  color: #34413c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.statusPendente {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.statusAprovado {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.statusRejeitado {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.acoesSolicitacao {
+  display: flex;
+  min-width: 170px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.acoesSolicitacao button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  color: #1d2926;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.acoesSolicitacao .botaoAprovar {
+  border-color: #b7ddc5;
+  background: #e7f6ec;
+  color: #166534;
+}
+
+.acoesSolicitacao .botaoRejeitar {
+  border-color: #f0c2c2;
+  background: #fff1f1;
+  color: #991b1b;
+}
+
+.acoesSolicitacao button:focus-visible,
+.formularioRecusa textarea:focus-visible {
+  outline: 3px solid #88cbb2;
+  outline-offset: 2px;
+}
+
+.formularioRecusa {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.formularioRecusa label {
+  color: #34413c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.formularioRecusa textarea {
+  width: 100%;
+  min-height: 78px;
+  padding: 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font: inherit;
+  resize: vertical;
+}
+
 @media (max-width: 760px) {
   .pagina {
     padding-top: 34px;
@@ -241,4 +500,64 @@
   .intervalo {
     min-width: 100%;
   }
+
+  .camposEspaco {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .formularioEspaco,
+  .listaEspacos {
+    padding: 16px;
+  }
+
+  .tituloListaEspacos,
+  .itemEspaco {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .solicitacao {
+    flex-direction: column;
+  }
+
+  .acoesSolicitacao {
+    width: 100%;
+  }
 }
+
+.indicadores { margin-bottom: 24px; }
+.acoes { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.pagina button:not(.botaoAba) {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: white;
+  color: var(--color-primary-dark);
+  font: inherit;
+  cursor: pointer;
+}
+.pagina button:disabled { opacity: .6; cursor: wait; }
+.pagina button:focus-visible, .pagina textarea:focus-visible { outline: 3px solid #307d65; outline-offset: 2px; }
+.cartao, .dialogo {
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: white;
+  overflow-wrap: anywhere;
+}
+.cartao { margin-block: 12px; }
+.cartao h3, .dialogo h2 { margin-top: 0; }
+.dialogo { width: min(30rem, calc(100% - 32px)); max-height: calc(100dvh - 32px); color: inherit; }
+.dialogo::backdrop { background: rgb(20 35 30 / .52); }
+.dialogo fieldset { min-width: 0; margin: 0 0 16px; padding: 0; border: 0; }
+.dialogo label { margin-bottom: 10px; }
+.campo textarea { width: 100%; min-height: 84px; padding: 8px; border: 1px solid var(--color-border); border-radius: 8px; font: inherit; resize: vertical; }
+.dialogo button[type='submit'] { background: var(--color-primary); color: white; }
+@media (max-width: 560px) {
+  .botaoAba { flex: 1; padding-inline: 6px; font-size: 14px; }
+  .campo { min-width: min(100%, 160px); }
+}
+.cartao details { margin-top: 12px; }
+.cartao summary { cursor: pointer; font-weight: 600; padding-block: 6px; }
+.cartao details p button { margin-inline-start: 8px; }

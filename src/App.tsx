@@ -9,6 +9,7 @@ import { Login } from './pages/Login'
 import { CadastroServidor } from './pages/CadastroServidor'
 import { RecuperarSenha } from './pages/RecuperarSenha'
 import { RotaProtegida } from './components/RotaProtegida'
+import { RotaPerfil } from './components/RotaPerfil'
 import { PainelAdmin } from './pages/PainelAdmin'
 
 function RotaDetalhesLaboratorio() {
@@ -41,9 +42,9 @@ function App() {
         <Route path="/laboratorios/:id/agendamento" element={<RotaSolicitacaoAgendamento />} />
         <Route path="/laboratorios/:id/agendamento/detalhes" element={<RotaDetalhesSolicitacao />} />
         <Route path="/meus-agendamentos" element={<MeusAgendamentos />} />
-      </Route>
-      <Route element={<RotaProtegida somenteAdministrador />}>
-        <Route path="/admin" element={<PainelAdmin />} />
+        <Route element={<RotaPerfil />}>
+          <Route path="/admin" element={<PainelAdmin />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

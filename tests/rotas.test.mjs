@@ -16,10 +16,10 @@ const codigo = resultado.code.replace(/from ["'](react-router-dom|react\/jsx-run
 const { default: App } = await import(`data:text/javascript;base64,${Buffer.from(codigo).toString('base64')}`)
 const rotas = createRoutesFromChildren(App().props.children)
 
-test('as cinco rotas pertencem ao mesmo guard RotaProtegida', () => {
+test('as cinco rotas de membro continuam no guard geral', () => {
   const guard = rotas.find(rota => rota.element?.type.name === 'RotaProtegida')
   assert.ok(guard)
-  assert.deepEqual(guard.children.map(rota => rota.path), [
+  assert.deepEqual(guard.children.filter(rota => rota.path).map(rota => rota.path), [
     '/', '/laboratorios/:id', '/laboratorios/:id/agendamento',
     '/laboratorios/:id/agendamento/detalhes', '/meus-agendamentos',
   ])
@@ -27,6 +27,16 @@ test('as cinco rotas pertencem ao mesmo guard RotaProtegida', () => {
     '/laboratorios/1/agendamento/detalhes', '/meus-agendamentos']) {
     assert.equal(matchRoutes(rotas, caminho)[0].route, guard)
   }
+})
+test('painel do gestor exige permissão de gestão dentro do guard de sessão', () => {
+  const guard = rotas.find(rota => rota.element?.type.name === 'RotaProtegida')
+  const rotaPerfil = guard?.children.find(rota => rota.element?.type.name === 'RotaPerfil')
+  assert.ok(rotaPerfil)
+  assert.deepEqual(rotaPerfil.children.map(rota => rota.path), ['/admin'])
+  const correspondencias = matchRoutes(rotas, '/admin')
+  assert.equal(correspondencias?.[0].route, guard)
+  assert.equal(correspondencias?.[1].route, rotaPerfil)
+  assert.equal(correspondencias?.[2].route.path, '/admin')
 })
 test('login, cadastro e recuperação permanecem públicos', () => {
   for (const caminho of ['/login', '/cadastro', '/recuperar-senha']) {
@@ -52,6 +62,8 @@ async function executarHooksB3(caminho, nome, modulos) {
   const ambiente = { modulos, window: new EventTarget(), document: Object.assign(new EventTarget(), { visibilityState: 'visible' }) }
   ambiente.setTimeout = (callback, atraso) => { const id = {}; timers.set(id, { callback, atraso }); return id }
   ambiente.clearTimeout = id => timers.delete(id)
+  ambiente.modulos['../services/sessaoSimulada'] ??= { simuladorLocalAtivo: false }
+  ambiente.modulos['../gestao/contextoGestor'] ??= { useAcessoGestor: () => null }
   ambiente.modulos.react = {
     useState(inicial) {
       const indice = indiceEstado++
@@ -114,7 +126,8 @@ async function montarGuardB3(t, verificar) {
   const local = { pathname: '/laboratorios/77', search: '?origem=catalogo' }
   const guard = await executarHooksB3('../src/components/RotaProtegida.tsx', 'RotaProtegida', {
     'react-router-dom': { Link: () => null, useLocation: () => local, Navigate: function Navigate() {}, Outlet: function Outlet() {} },
-    '../services/autenticacao': { ANTECEDENCIA_RENOVACAO_MS: 30_000, verificarSessao: verificar, obterTokenAcesso: () => 'token', obterExpiracaoToken: () => Date.now() + 90_000 },
+    '../gestao/AcessoGestor': { AcessoGestor: function AcessoGestor() {} },
+    '../services/autenticacao': { eventoSessaoEncerrada: 'labagenda:sessao-encerrada', eventoSessaoGestor: 'labagenda:sessao-gestor', ANTECEDENCIA_RENOVACAO_MS: 30_000, verificarSessao: verificar, obterTokenAcesso: () => 'token', obterExpiracaoToken: () => Date.now() + 90_000 },
   })
   t.after(() => guard.desmontar())
   return { guard, local }
@@ -123,14 +136,16 @@ test('guard válido autoriza e agenda renovação antes do vencimento', async t 
   let chamadas = 0
   const { guard } = await montarGuardB3(t, async () => { chamadas++; return { id: 1 } })
   await guard.flush()
-  assert.equal(guard.atual.type.name, 'Outlet')
+  assert.equal(guard.atual.type.name, 'AcessoGestor')
+  assert.equal(guard.atual.props.children.type.name, 'Outlet')
   assert.equal(chamadas, 1)
   const timer = [...guard.timers.values()][0]
   assert.ok(timer.atraso >= 59_000 && timer.atraso <= 60_000)
   timer.callback()
   await guard.flush()
   assert.equal(chamadas, 2)
-  assert.equal(guard.atual.type.name, 'Outlet')
+  assert.equal(guard.atual.type.name, 'AcessoGestor')
+  assert.equal(guard.atual.props.children.type.name, 'Outlet')
 })
 test('guard aguarda recuperação de sessão sem redirecionar prematuramente', async t => {
   let liberar
@@ -138,7 +153,8 @@ test('guard aguarda recuperação de sessão sem redirecionar prematuramente', a
   assert.equal(guard.atual.props.role, 'status')
   liberar({ id: 1 })
   await guard.flush()
-  assert.equal(guard.atual.type.name, 'Outlet')
+  assert.equal(guard.atual.type.name, 'AcessoGestor')
+  assert.equal(guard.atual.props.children.type.name, 'Outlet')
 })
 test('guard inválido preserva destino e query sem loop', async t => {
   let chamadas = 0
@@ -158,7 +174,8 @@ test('guard offline mostra erro e permite nova tentativa sem redirecionar', asyn
   assert.equal(guard.atual.props.role, 'alert')
   guard.atual.props.children[2].props.onClick()
   await guard.flush()
-  assert.equal(guard.atual.type.name, 'Outlet')
+  assert.equal(guard.atual.type.name, 'AcessoGestor')
+  assert.equal(guard.atual.props.children.type.name, 'Outlet')
 })
 test('guard não atualiza após desmontagem e remove listener e timer', async t => {
   let liberar, chamadas = 0
@@ -324,11 +341,12 @@ for (const falha of [false, true]) {
 }
 
 
-test('/admin possui guard dedicado que exige Administrador', () => {
+test('/admin exige sessao e autorizacao de Administrador ou coordenador vinculado', () => {
   const matches = matchRoutes(rotas, '/admin')
   assert.equal(matches[0].route.element.type.name, 'RotaProtegida')
-  assert.equal(matches[0].route.element.props.somenteAdministrador, true)
-  assert.equal(matches[1].route.element.type.name, 'PainelAdmin')
+  assert.notEqual(matches[0].route.element.props.somenteAdministrador, true)
+  assert.equal(matches[1].route.element.type.name, 'RotaPerfil')
+  assert.equal(matches[2].route.element.type.name, 'PainelAdmin')
 })
 
 

@@ -1,5 +1,5 @@
 import { requisitar, ErroHttp } from './http'
-import { obterTokenAcesso, tokenExpirou, renovarSessao, encerrarSessao } from './autenticacao'
+import { obterTokenAcesso, obterUsuarioAutenticado, tokenExpirou, renovarSessao, encerrarSessao } from './autenticacao'
 import type { EspacoResposta } from '../types/espaco'
 
 type Registro = Record<string, unknown>
@@ -31,7 +31,9 @@ export function validarPaginaEspacos(valor: unknown): EspacoResposta[] {
       && hora(h.hora_abertura) && hora(h.hora_fechamento) && booleano(h.ativo) && h.id_espaco === espaco.id)
     && lista(espaco.pausas_funcionamento, p => inteiro(p.id) && data(p.data_inicio) && data(p.data_fim)
       && texto(p.motivo) && p.id_espaco === espaco.id)
-    && lista(espaco.usuarios_vinculados, u => inteiro(u.id_usuario) && texto(u.nome_completo)))) {
+    && lista(espaco.usuarios_vinculados, u => inteiro(u.id_usuario) && texto(u.nome_completo)
+      && (u.perfil_espaco === undefined || u.perfil_espaco === null
+        || u.perfil_espaco === 'Coordenador' || u.perfil_espaco === 'Monitor')))) {
     throw new ErroHttp('resposta', 'A API retornou um catálogo com dados inválidos.')
   }
   return valor as EspacoResposta[]
@@ -54,18 +56,21 @@ function aguardar<T>(promessa: Promise<T>, signal?: AbortSignal): Promise<T> {
  */
 export async function listarEspacos(signal?: AbortSignal): Promise<EspacoResposta[]> {
   let tokenCarga = obterTokenAcesso()
+  let usuarioCarga = obterUsuarioAutenticado()?.id
   const sessaoInvalida = () => new ErroHttp('http', 'Sua sessão expirou. Entre novamente.', 401)
   const conferir = () => {
     signal?.throwIfAborted()
     const atual = obterTokenAcesso()
     if (!atual) throw sessaoInvalida()
-    if (atual !== tokenCarga) throw new ErroHttp('resposta', 'A sessão mudou durante a consulta. Tente carregar o catálogo novamente.')
+    if (obterUsuarioAutenticado()?.id !== usuarioCarga || atual !== tokenCarga) throw new ErroHttp('resposta', 'A sessão mudou durante a consulta. Tente carregar o catálogo novamente.')
   }
   const renovar = async () => {
     signal?.throwIfAborted()
     const sessao = await aguardar(renovarSessao(), signal)
     signal?.throwIfAborted()
     if (!sessao || obterTokenAcesso() !== sessao.access_token) throw sessaoInvalida()
+    if (usuarioCarga !== undefined && sessao.usuario.id !== usuarioCarga) throw sessaoInvalida()
+    usuarioCarga = sessao.usuario.id
     tokenCarga = sessao.access_token
   }
   signal?.throwIfAborted()

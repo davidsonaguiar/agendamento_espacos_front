@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { adaptarEspaco } from '../data/catalogoEspacos'
 import { listarEspacos } from '../services/espacos'
-import { obterTokenAcesso } from '../services/autenticacao'
+import { obterTokenAcesso, obterUsuarioAutenticado } from '../services/autenticacao'
 import { ErroHttp } from '../services/http'
 import type { EspacoCatalogo } from '../types/espaco'
 
@@ -19,12 +19,17 @@ export function useCatalogoEspacos() {
   useEffect(() => {
     const controle = new AbortController()
     let ativo = true
+    const usuarioCarga = obterUsuarioAutenticado()?.id
     const voltarAoLogin = () => navigate('/login', { replace: true,
       state: { aviso: 'Sua sessão expirou. Entre novamente.', destino: location.pathname + location.search } })
     setEstado({ tipo: 'carregando' })
     void listarEspacos(controle.signal).then(espacos => {
       if (!ativo || controle.signal.aborted) return
       if (!obterTokenAcesso()) { voltarAoLogin(); return }
+      if (usuarioCarga !== undefined && obterUsuarioAutenticado()?.id !== usuarioCarga) {
+        setEstado({ tipo: 'erro', mensagem: 'A conta mudou durante a consulta. Tente carregar o catálogo novamente.' })
+        return
+      }
       setEstado({ tipo: 'pronto', espacos: espacos.map(adaptarEspaco) })
     }).catch((erro: unknown) => {
       if (!ativo || controle.signal.aborted) return

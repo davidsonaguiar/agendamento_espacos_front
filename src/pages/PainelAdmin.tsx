@@ -1,174 +1,67 @@
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
+import { simuladorLocalAtivo } from '../services/sessaoSimulada'
+import { FilaSimulada } from '../gestao/FilaSimulada'
 import { Cabecalho } from '../components/Cabecalho'
+import { useAcessoGestor } from '../gestao/contextoGestor'
+import { AvisoConsulta } from '../gestao/Controles'
+import { Fila } from '../gestao/Fila'
+import { Agenda } from '../gestao/Agenda'
+import { Laboratorios } from '../gestao/Laboratorios'
 import styles from './PainelAdmin.module.css'
 
-type AbaPainel = 'aprovacoes' | 'agenda' | 'laboratorios'
-
-const abas: Array<{ id: AbaPainel; titulo: string }> = [
-  { id: 'aprovacoes', titulo: 'Aprovações' },
-  { id: 'agenda', titulo: 'Agenda' },
-  { id: 'laboratorios', titulo: 'Laboratórios' },
+const abas = [
+  { nome: 'Aprovações', titulo: 'Fila de aprovação' },
+  { nome: 'Agenda', titulo: 'Agenda mestre' },
+  { nome: 'Laboratórios', titulo: 'Gestão de laboratórios' },
 ]
 
-const indicadores = [
-  { titulo: 'Pendentes', cor: 'amarelo' },
-  { titulo: 'Aprovadas hoje', cor: 'verde' },
-  { titulo: 'Conflitos detectados', cor: 'vermelho' },
-  { titulo: 'Laboratórios', cor: 'azul' },
-] as const
-
 export function PainelAdmin() {
-  const [abaAtiva, setAbaAtiva] = useState<AbaPainel>('aprovacoes')
-  const [periodo, setPeriodo] = useState('todos')
+  const acesso = useAcessoGestor()
+  const [aviso, setAviso] = useState('')
+  const [aba, setAba] = useState(0)
+  function navegarAbas(evento: KeyboardEvent<HTMLButtonElement>, indice: number) {
+    const destinos: Record<string, number> = { Home: 0, End: abas.length - 1,
+      ArrowLeft: (indice + abas.length - 1) % abas.length, ArrowRight: (indice + 1) % abas.length }
+    const destino = destinos[evento.key]
+    if (destino === undefined) return
+    evento.preventDefault()
+    setAba(destino)
+    document.getElementById('aba-gestor-' + destino)?.focus()
+  }
 
-  return (
-    <>
-      <Cabecalho />
-      <main className={styles.pagina}>
-        <header className={styles.cabecalhoPagina}>
-          <h1>Painel do gestor</h1>
-          <p>Gerencie solicitações e acompanhe a utilização dos laboratórios.</p>
-        </header>
+  const espacos = acesso?.espacos
+  if (!espacos || !acesso) return <main className="access-feedback">
+    <AvisoConsulta erro={acesso?.erro} atualizar={() => acesso?.atualizar()} />
+  </main>
+  function aposCadastro(nome: string) {
+    setAviso(`Espaço "${nome}" cadastrado com sucesso.`)
+    acesso?.atualizar()
+  }
 
-        <div className={styles.abas} role="tablist" aria-label="Seções do painel do gestor">
-          {abas.map(aba => (
-            <button
-              key={aba.id}
-              id={`aba-${aba.id}`}
-              className={`${styles.botaoAba} ${abaAtiva === aba.id ? styles.abaAtiva : ''}`}
-              type="button"
-              role="tab"
-              aria-selected={abaAtiva === aba.id}
-              aria-controls={`conteudo-${aba.id}`}
-              onClick={() => setAbaAtiva(aba.id)}
-            >
-              {aba.titulo}
-            </button>
-          ))}
-        </div>
-
-        <section
-          id="conteudo-aprovacoes"
-          className={styles.conteudoAba}
-          role="tabpanel"
-          aria-labelledby="aba-aprovacoes"
-          hidden={abaAtiva !== 'aprovacoes'}
-        >
-          <header className={styles.tituloSecao}>
-            <h2>Fila de aprovação</h2>
-            <p>Analise solicitações pendentes ou consulte o histórico de decisões.</p>
-          </header>
-
-          <div className={styles.indicadores} aria-label="Indicadores aguardando integração">
-            {indicadores.map(indicador => (
-              <article
-                key={indicador.titulo}
-                className={`${styles.indicador} ${styles[indicador.cor]}`}
-              >
-                <span className={styles.valorIndicador} aria-label="Não disponível">—</span>
-                <span className={styles.nomeIndicador}>{indicador.titulo}</span>
-              </article>
-            ))}
-          </div>
-
-          <p className={styles.aviso} role="note">
-            As solicitações e os indicadores serão carregados após a integração com o backend.
-            Nenhuma aprovação ou rejeição é registrada por esta tela.
-          </p>
-
-          <div className={styles.filtros}>
-            <label className={styles.campo}>
-              <span>Laboratório</span>
-              <select disabled defaultValue="todos">
-                <option value="todos">Todos os laboratórios</option>
-              </select>
-            </label>
-
-            <label className={styles.campo}>
-              <span>Período</span>
-              <select value={periodo} onChange={evento => setPeriodo(evento.target.value)}>
-                <option value="todos">Todas as datas</option>
-                <option value="hoje">Hoje</option>
-                <option value="proximos-7">Próximos 7 dias</option>
-                <option value="ultimos-7">Últimos 7 dias</option>
-                <option value="ultimos-30">Últimos 30 dias</option>
-                <option value="personalizado">Intervalo personalizado</option>
-              </select>
-            </label>
-
-            {periodo === 'personalizado' && (
-              <fieldset className={`${styles.campo} ${styles.intervalo}`}>
-                <legend>Intervalo de datas</legend>
-                <div className={styles.datas}>
-                  <label>
-                    <span className={styles.rotuloOculto}>Data inicial</span>
-                    <input type="date" disabled />
-                  </label>
-                  <span>até</span>
-                  <label>
-                    <span className={styles.rotuloOculto}>Data final</span>
-                    <input type="date" disabled />
-                  </label>
-                </div>
-              </fieldset>
-            )}
-
-            <label className={styles.campo}>
-              <span>Finalidade</span>
-              <select disabled defaultValue="todas">
-                <option value="todas">Todas as finalidades</option>
-              </select>
-            </label>
-
-            <label className={styles.campo}>
-              <span>Status</span>
-              <select disabled defaultValue="todos">
-                <option value="todos">Todos os status</option>
-                <option value="pendente">Pendentes</option>
-                <option value="conflito">Conflitos</option>
-                <option value="aprovado">Aprovados</option>
-                <option value="rejeitado">Rejeitados</option>
-              </select>
-            </label>
-          </div>
-
-          <p className={styles.estadoVazio} role="status">
-            Nenhuma solicitação carregada. Elas aparecerão aqui após a integração com o backend.
-          </p>
-        </section>
-
-        <section
-          id="conteudo-agenda"
-          className={styles.conteudoAba}
-          role="tabpanel"
-          aria-labelledby="aba-agenda"
-          hidden={abaAtiva !== 'agenda'}
-        >
-          <header className={styles.tituloSecao}>
-            <h2>Agenda mestre</h2>
-            <p>Visualize reservas por laboratório e identifique conflitos de horário.</p>
-          </header>
-          <p className={styles.estadoVazio} role="status">
-            Nenhuma reserva carregada. A agenda estará disponível após a integração com o backend.
-          </p>
-        </section>
-
-        <section
-          id="conteudo-laboratorios"
-          className={styles.conteudoAba}
-          role="tabpanel"
-          aria-labelledby="aba-laboratorios"
-          hidden={abaAtiva !== 'laboratorios'}
-        >
-          <header className={styles.tituloSecao}>
-            <h2>Gestão de laboratórios</h2>
-            <p>A edição dos espaços estará disponível após a integração com o backend.</p>
-          </header>
-          <p className={styles.estadoVazio} role="status">
-            Nenhum laboratório carregado. Os dados serão exibidos após a integração com o backend.
-          </p>
-        </section>
-      </main>
-    </>
-  )
+  return <>
+    <Cabecalho />
+    <main className={styles.pagina}>
+      <header className={styles.cabecalhoPagina}>
+        <h1>Painel do gestor</h1><p>Gerencie solicitações e acompanhe a utilização dos laboratórios.</p>
+      </header>
+      <div className={styles.abas} role="tablist" aria-label="Seções do painel do gestor">
+        {abas.map(({ nome }, i) => <button key={nome} id={'aba-gestor-' + i} type="button" role="tab"
+          className={styles.botaoAba + (aba === i ? ' ' + styles.abaAtiva : '')}
+          aria-selected={aba === i} tabIndex={aba === i ? 0 : -1} aria-controls={'painel-gestor-' + i}
+          onKeyDown={e => navegarAbas(e, i)} onClick={() => setAba(i)}>{nome}</button>)}
+      </div>
+      {abas.map(({ titulo }, i) => <section key={titulo} role="tabpanel" id={'painel-gestor-' + i}
+        aria-labelledby={'aba-gestor-' + i} hidden={aba !== i} className={styles.conteudoAba}>
+        {aba === i && <>
+          <header className={styles.tituloSecao}><h2>{titulo}</h2></header>
+          {i === 0 && (simuladorLocalAtivo ? <FilaSimulada /> : <Fila espacos={espacos} />)}
+          {i === 1 && (simuladorLocalAtivo ? <p>As reservas confirmadas estão disponíveis no modo conectado.</p> : <Agenda espacos={espacos} />)}
+          {i === 2 && aviso && <p role="status">{aviso}</p>}
+          {i === 2 && (simuladorLocalAtivo
+            ? <p>Desative o simulador local para gerenciar laboratórios pela API.</p>
+            : <Laboratorios aoCriar={aposCadastro} espacos={espacos} administrador={acesso.administrador} atualizar={acesso.atualizar} />)}
+        </>}
+      </section>)}
+    </main>
+  </>
 }

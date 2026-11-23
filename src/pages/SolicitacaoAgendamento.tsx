@@ -57,7 +57,7 @@ export function SolicitacaoAgendamento({ id }: { id: string }) {
       <span className="booking-progress__step booking-progress__step--upcoming">3 · Prévia</span>
     </nav>
     <header className="booking-intro"><h1>Escolha a data e o horário</h1><p>{espaco ? `Disponibilidade de ${espaco.nome}.` : 'Consulte a disponibilidade do laboratório.'}</p></header>
-    <p className="booking-notice" role="note">Disponibilidade consultada na API, sujeita a alterações. A seleção não cria reserva. O envio de solicitações ainda está bloqueado.</p>
+    <p className="booking-notice" role="note">Disponibilidade consultada na API, sujeita a alterações. A seleção não cria reserva. Revise os dados na próxima etapa antes de enviar a solicitação.</p>
     {estado.tipo === 'carregando' && <p role="status">Carregando disponibilidade...</p>}
     {estado.tipo === 'erro' && <section role="alert"><p>{estado.mensagem}</p><button type="button" onClick={tentarNovamente}>Tentar novamente</button></section>}
     {estado.tipo === 'pronto' && !espaco && <p role="status">Laboratório não encontrado no catálogo acessível à sua conta.</p>}

@@ -1,4 +1,4 @@
-﻿import type { EspacoCatalogo, EspacoResposta } from '../types/espaco'
+import type { EspacoCatalogo, EspacoResposta } from '../types/espaco'
 
 export function adaptarEspaco(espaco: EspacoResposta): EspacoCatalogo {
   return {

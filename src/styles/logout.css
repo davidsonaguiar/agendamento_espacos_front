@@ -1,4 +1,5 @@
 .site-nav__logout {
+  min-height: 40px;
   border: 1px solid var(--color-border, #d5e0dc);
   border-radius: 8px;
   background: #fff;
@@ -8,14 +9,29 @@
   font: inherit;
   font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .site-nav__logout:hover { background: #e7f4ef; }
 .site-nav__logout:focus-visible { outline: 3px solid #88cbb2; outline-offset: 3px; }
 .site-nav__logout:disabled { cursor: wait; opacity: .65; }
-@media (max-width: 560px) { .site-nav { gap: 8px; } .site-nav__logout { padding: 8px 10px; } }
 /* Permite acomodar saída e avatar sem comprimir os links em telas pequenas. */
 .site-nav .user-avatar { flex: 0 0 auto; }
+
+/* Reflow exclusivo do gestor, sem elevar a especificidade dos estilos da agenda. */
+@media (max-width: 820px) {
+  .site-header:where(:has(.site-nav--admin)) { height: auto; min-height: 92px; }
+  .site-header__inner:where(:has(> .site-nav--admin)) {
+    height: auto; min-height: 92px; flex-wrap: wrap; gap: 12px; padding-block: 12px;
+  }
+  .site-nav--admin {
+    width: 100%; height: auto; flex-wrap: wrap; justify-content: space-between; gap: 12px;
+  }
+  .site-nav--admin .site-nav__link { font-size: 14px; }
+}
 @media (max-width: 560px) {
-  .site-nav { flex-wrap: wrap; row-gap: 12px; }
-  .site-nav__logout { min-height: 40px; }
+  .site-nav { gap: 8px; flex-wrap: wrap; row-gap: 12px; }
+  .site-nav__logout { padding: 8px 10px; }
+  .site-nav--admin { flex: 1 1 100%; }
+  .site-nav--admin .site-nav__logout { flex: 1 0 100%; min-height: 44px; }
 }

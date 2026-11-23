@@ -564,3 +564,15 @@ test('adaptador preserva horários reais e copia os registros sem alterar a resp
   delete original.horarios_funcionamento
   assert.deepEqual(catalogo.adaptarEspaco(original).horariosFuncionamento, [])
 })
+
+// Ausencia de identidade pode tentar recuperar cookie, mas nunca publicar catalogo sem sessao.
+test('sem identidade e com refresh recusado nao consulta catalogo', async () => {
+  const caminhos = []
+  storage.clear()
+  globalThis.fetch = async url => {
+    caminhos.push(new URL(url).pathname)
+    return resposta({ detail: 'Sessao invalida' }, 401)
+  }
+  await assert.rejects(servico.listarEspacos(), erro => erro.status === 401)
+  assert.deepEqual(caminhos, ['/usuarios/refresh'])
+})
