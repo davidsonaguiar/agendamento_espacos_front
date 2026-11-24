@@ -232,13 +232,19 @@ test('interacao do gestor conserva mensagem e precisao temporal em resultado inc
 })
 for (const proposta of [false, true]) test('resposta do aluno ' + (proposta ? 'a proposta' : 'a complementacao') + ' preserva texto e bloqueia POST incerto', async () => {
   transporte = async () => { throw new TypeError('offline') }
-  const dados: SolicitacaoResposta = proposta ? { ...solicitacao, status: 'AguardandoRespostaProposta', interacoes: [{ ...solicitacao.interacoes[0], tipo: 'ReplanejamentoProposto' }] } : solicitacao
+  sessionStorage.setItem('labagenda.usuario', JSON.stringify({ ...usuario, perfil: 'Membro' }))
+  const dados: SolicitacaoResposta = proposta ? { ...solicitacao, status: 'AguardandoRespostaProposta', interacoes: [{ ...solicitacao.interacoes[0], tipo: 'ReplanejamentoProposto', dados: { horarios: solicitacao.horarios } }] } : solicitacao
   const tela = render(<RespostaAluno solicitacao={dados} atualizar={() => {}} />)
+  if (proposta) await userEvent.setup().click(screen.getByRole('radio', { name: 'Aceitar proposta' }))
   await userEvent.setup().type(screen.getByLabelText('Sua resposta'), 'Resposta preservada')
   fireEvent.submit(screen.getByRole('button', { name: 'Enviar resposta' }).closest('form')!)
   await screen.findByText(/O resultado e desconhecido/)
   tela.unmount(); render(<RespostaAluno solicitacao={dados} atualizar={() => {}} />)
   assert.equal((screen.getByLabelText('Sua resposta') as HTMLTextAreaElement).value, 'Resposta preservada')
+  if (proposta) {
+    assert.ok((screen.getByRole('radio', { name: 'Aceitar proposta' }) as HTMLInputElement).checked)
+    assert.ok(screen.getByRole('radio', { name: 'Aceitar proposta' }).hasAttribute('disabled') || screen.getByRole('radio', { name: 'Aceitar proposta' }).closest('fieldset')!.disabled)
+  }
   fireEvent.submit(screen.getByRole('button', { name: 'Enviar resposta' }).closest('form')!)
   assert.equal(escritas().length, 1)
 })

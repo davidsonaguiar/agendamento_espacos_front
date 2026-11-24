@@ -1,0 +1,27 @@
+.decisao { min-width: 0; margin: 0; padding: 0; border: 0; }
+.decisao legend { margin-bottom: 12px; padding: 0; font-size: 14px; font-weight: 600; }
+.opcoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.cartao { display: flex; min-width: 0; min-height: 64px; align-items: center; gap: 12px; padding: 14px; border: 2px solid var(--color-border); border-radius: 12px; background: var(--color-surface); cursor: pointer; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.cartao input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; accent-color: var(--color-primary); }
+.cartao svg { flex: 0 0 auto; width: 24px; height: 24px; color: var(--color-muted); }
+.cartao:has(input:checked) { border-color: var(--color-primary); background: #e7f4ef; color: var(--color-primary-dark); }
+.cartao:has(input:checked) svg { color: var(--color-primary); }
+.cartao:has(input:focus-visible) { outline: 3px solid #88cbb2; outline-offset: 2px; }
+.decisao:disabled .cartao { opacity: .55; cursor: not-allowed; }
+
+.historico { min-width: 0; }
+.historico summary { min-height: 44px; padding-block: 12px; cursor: pointer; font-weight: 600; }
+.historico summary:focus-visible { outline: 3px solid #88cbb2; outline-offset: 2px; border-radius: 4px; }
+.mensagens { display: grid; gap: 12px; margin: 12px 0 0; padding: 0; list-style: none; }
+.mensagem { min-width: 0; padding: 16px; border: 1px solid var(--color-border); border-inline-start-width: 4px; border-radius: 10px; background: var(--color-surface); overflow-wrap: anywhere; }
+.solicitante { background: #f8faf9; }
+.gestao { background: #e7f4ef; border-inline-start-color: var(--color-primary); }
+.neutro { background: var(--color-surface); }
+.cabecalhoMensagem { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-bottom: 10px; }
+.autor { font-size: 14px; font-weight: 700; }
+.gestao .autor { color: var(--color-primary-dark); }
+.data, .situacao { color: #45544e; font-size: 12px; line-height: 1.5; }
+.tipo { display: block; font-size: 14px; line-height: 1.5; }
+.texto { margin: 8px 0; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.situacao { margin: 12px 0 0; }
+.mensagem ul { margin-block: 10px; padding-inline-start: 20px; }

@@ -2,7 +2,7 @@ import { RotaPerfil } from '../src/components/RotaPerfil'
 import { ContextoGestor } from '../src/gestao/contextoGestor'
 import assert from 'node:assert/strict'
 import { test, afterEach, beforeEach } from 'node:test'
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Router, Link, useLocation, Route, Routes } from 'react-router-dom'
 import App from '../src/App'
@@ -1043,7 +1043,10 @@ function montarAgendaReal() {
   autenticado = true
   sessionStorage.setItem('labagenda.access_token', jwt())
   sessionStorage.setItem('labagenda.usuario', JSON.stringify(usuario))
-  return render(<MemoryRouter><MeusAgendamentos /></MemoryRouter>)
+  const tela = render(<MemoryRouter><MeusAgendamentos /></MemoryRouter>)
+  // Estes cenarios exercitam o historico completo, independentemente do padrao inicial.
+  fireEvent.change(screen.getByLabelText('Período de utilização'), { target: { value: 'todos' } })
+  return tela
 }
 const getsAgenda = () => chamadas.filter(c => new URL(c.url).pathname === '/solicitacoes/' && c.method === 'GET')
 
@@ -1227,6 +1230,7 @@ test('confirmação preservada abre histórico com nova consulta sem repetir POS
   } }]}><App /></MemoryRouter>)
   await screen.findByText('Solicitação enviada e aguardando análise.')
   await userEvent.setup().click(screen.getByRole('link', { name: 'Consultar minhas solicitações' }))
+  await userEvent.setup().selectOptions(screen.getByLabelText('Período de utilização'), 'todos')
   await screen.findByText('Solicitação #3')
   assert.ok(getsAgenda().length >= 1)
   assert.equal(postsCriacao().length, 0)

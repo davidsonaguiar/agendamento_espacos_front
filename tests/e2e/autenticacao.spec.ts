@@ -524,6 +524,7 @@ test('D5B lista própria real simulada filtra e atualiza sem criar solicitação
     return route.fulfill({ status: 200, json: lista })
   })
   await page.goto('/meus-agendamentos')
+  await page.getByLabel('Período de utilização').selectOption('todos')
   await expect(page.getByText('Solicitação #3', { exact: true })).toBeVisible()
   await expect(page.getByText('Finalidade API 4', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Duração: 1 h 0,000001 s', { exact: true })).toBeVisible()
@@ -544,6 +545,7 @@ test('D5B troca de usuário limpa cartões no navegador sem polling', async ({ p
     return route.fulfill({ status: 200, json: [consultaAgenda(), consultaAgenda(4, 99)] })
   })
   await page.goto('/meus-agendamentos')
+  await page.getByLabel('Período de utilização').selectOption('todos')
   await expect(page.getByText('Solicitação #3', { exact: true })).toBeVisible()
   await page.evaluate(() => {
     const salvo = JSON.parse(sessionStorage.getItem('labagenda.usuario')!)
@@ -576,6 +578,7 @@ test.describe('D5C filtros e apresentação', () => {
   test('controles rotulados, teclado e combinação de filtros sem nova consulta', async ({ page }) => {
     const leituras = await prepararAgenda(page)
     await page.goto('/meus-agendamentos')
+    await page.getByLabel('Período de utilização').selectOption('todos')
     await expect(page.getByText('Solicitação #3', { exact: true })).toBeVisible()
     const antes = leituras()
     await page.getByLabel('Período de utilização').selectOption('personalizado')
@@ -599,6 +602,7 @@ test.describe('D5C filtros e apresentação', () => {
     await page.clock.install({ time: new Date('2026-11-20T02:59:59Z') })
     const leituras = await prepararAgenda(page)
     await page.goto('/meus-agendamentos')
+    await page.getByLabel('Período de utilização').selectOption('todos')
     await expect(page.getByText('Solicitação #5', { exact: true })).toBeVisible()
     await page.getByLabel('Período de utilização').selectOption('passados')
     await expect(page.getByRole('article')).toHaveCount(0)
@@ -610,6 +614,7 @@ test.describe('D5C filtros e apresentação', () => {
   test('layout a 320, 375, 393 e 768px com controles personalizados e zoom 200%', async ({ page }) => {
     await prepararAgenda(page)
     await page.goto('/meus-agendamentos')
+    await page.getByLabel('Período de utilização').selectOption('todos')
     await expect(page.getByText('Solicitação #3', { exact: true })).toBeVisible()
     await page.getByLabel('Período de utilização').selectOption('personalizado')
     await page.getByLabel('Data inicial').fill('2026-11-22')
@@ -725,6 +730,7 @@ test('membro envia um intervalo do catálogo e consulta o resultado na agenda pe
   await expect(page.getByText('Solicitação enviada e aguardando análise.')).toBeVisible()
   await page.getByRole('link', { name: 'Consultar minhas solicitações' }).click()
   await expect(page).toHaveURL(/\/meus-agendamentos$/)
+  await page.getByLabel('Período de utilização').selectOption('todos')
   await expect(page.getByText(pedido.finalidade)).toBeVisible()
   await expect(page.getByText('Outro solicitante')).toHaveCount(0)
   expect(criados).toBe(1)

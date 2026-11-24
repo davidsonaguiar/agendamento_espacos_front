@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { SolicitacaoConsulta, StatusOficialSolicitacao } from '../types/solicitacaoConsulta'
 import { lerData } from '../data/disponibilidade'
 import { classificarStatusSolicitacao } from '../data/solicitacoesRecebidas'
@@ -7,7 +8,7 @@ const rotulosStatus: Record<StatusOficialSolicitacao, string> = {
   Pendente: 'Pendente', AguardandoComplementacao: 'Aguardando complementação', AguardandoRespostaProposta: 'Aguardando resposta à proposta',
   Aprovado: 'Aprovado', Rejeitado: 'Rejeitado', Cancelada: 'Cancelada',
 }
-export function CartaoSolicitacao({ solicitacao }: { solicitacao: SolicitacaoConsulta }) {
+export function CartaoSolicitacao({ solicitacao, children }: { solicitacao: SolicitacaoConsulta; children?: ReactNode }) {
   const status = classificarStatusSolicitacao(solicitacao.status)
   const justificativa = ['Aprovado', 'Rejeitado'].includes(solicitacao.status) ? solicitacao.decisao_justificativa?.trim() : ''
   return <article className="agenda-card">
@@ -35,5 +36,6 @@ export function CartaoSolicitacao({ solicitacao }: { solicitacao: SolicitacaoCon
         </li>
       })}
     </ul> : <p>Horários não informados.</p>}
+    {children}
   </article>
 }

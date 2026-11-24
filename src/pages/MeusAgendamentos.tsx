@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Cabecalho } from '../components/Cabecalho'
+import { RespostaAluno } from '../components/RespostaAluno'
 import { CartaoSolicitacao } from '../components/CartaoSolicitacao'
 import { useMinhasSolicitacoes } from '../hooks/useMinhasSolicitacoes'
 import { selecionarSolicitacoes } from '../data/apresentacaoSolicitacoes'
@@ -18,7 +19,7 @@ const filtrosStatus: Array<{ valor: FiltroStatus; rotulo: string }> = [
 ]
 export function MeusAgendamentos() {
   const [status, setStatus] = useState<FiltroStatus>('Todos')
-  const [periodo, setPeriodo] = useState<TipoPeriodoSolicitacao>('todos')
+  const [periodo, setPeriodo] = useState<TipoPeriodoSolicitacao>('7dias')
   const [ordem, setOrdem] = useState<OrdemSolicitacao>('crescente')
   const [inicio, setInicio] = useState('')
   const [fim, setFim] = useState('')
@@ -27,6 +28,8 @@ export function MeusAgendamentos() {
   const { estado, atualizar } = useMinhasSolicitacoes()
   const lista = estado.tipo === 'pronto' ? estado.solicitacoes : []
   const { solicitacoes, erro: erroPeriodo } = selecionarSolicitacoes(lista, { tipo: periodo, inicio, fim }, status, ordem, hoje)
+  const aguardando = lista.filter(s => s.status === 'AguardandoComplementacao' || s.status === 'AguardandoRespostaProposta')
+  const ocultas = aguardando.filter(s => !solicitacoes.includes(s)).length
   return <div className="agenda-view"><Cabecalho /><main className="page-shell agenda-page">
     <header className="page-intro"><h1>Agendamentos</h1><p>Acompanhe suas solicitações de utilização dos laboratórios.</p></header>
     <p className="agenda-notice" role="note">Os status são retornados pela API. Uma solicitação pendente aguarda análise e não confirma reserva de horário.</p>
@@ -65,6 +68,10 @@ export function MeusAgendamentos() {
       <p className="agenda-controls__help">Períodos por datas locais de utilização, com limites inclusivos. Basta um intervalo corresponder; todos os horários permanecem no cartão.</p>
       {erroPeriodo && <p id={`${controlesId}-erro`} className="agenda-controls__error" role="alert">{erroPeriodo}</p>}
     </section>
+    {estado.tipo === 'pronto' && ocultas > 0 && <aside className="agenda-notice" aria-label="Respostas pendentes">
+      <p>{ocultas} {ocultas === 1 ? 'solicitação aguardando sua resposta está oculta' : 'solicitações aguardando sua resposta estão ocultas'} pelos filtros atuais.</p>
+      <button type="button" className="button" onClick={() => { setStatus('Todos'); setPeriodo('todos') }}>Mostrar todas as solicitações</button>
+    </aside>}
     <section id="agenda-results" aria-label="Minhas solicitações" aria-busy={estado.tipo === 'carregando'}>
       {estado.tipo === 'carregando' ? <p role="status">Carregando suas solicitações...</p>
         : estado.tipo === 'sessao-invalida' ? <section role="alert"><p>Sua sessão expirou ou mudou. Entre novamente para consultar suas solicitações.</p><Link to="/login" state={{ destino: '/meus-agendamentos' }}>Entrar novamente</Link></section>
@@ -73,7 +80,7 @@ export function MeusAgendamentos() {
             : <><p className="agenda-results-count" role="status">{solicitacoes.length} {solicitacoes.length === 1 ? 'solicitação encontrada' : 'solicitações encontradas'}. Ordenação por data e horário, {ordem}.</p>
               {!lista.length ? <p className="agenda-empty">Você ainda não possui solicitações.</p>
                 : !solicitacoes.length ? <p className="agenda-empty">Nenhuma solicitação corresponde aos filtros selecionados. Selecione “Todos” e “Todos os períodos” para voltar à listagem completa.</p>
-                  : <ul className="agenda-list">{solicitacoes.map((solicitacao, indice) => <li key={solicitacao.id ?? `solicitacao-${indice}`}><CartaoSolicitacao solicitacao={solicitacao} /></li>)}</ul>}
+                  : <ul className="agenda-list">{solicitacoes.map((solicitacao, indice) => <li key={solicitacao.id ?? `solicitacao-${indice}`}><CartaoSolicitacao solicitacao={solicitacao}><RespostaAluno solicitacao={solicitacao} atualizar={atualizar} /></CartaoSolicitacao></li>)}</ul>}
             </>}
     </section>
   </main></div>
