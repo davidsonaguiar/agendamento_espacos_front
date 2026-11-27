@@ -9,7 +9,7 @@ import styles from '../pages/PainelAdmin.module.css'
 const periodos = ['Todas as datas', 'Hoje', 'Próximos 7 dias', 'Últimos 7 dias', 'Últimos 30 dias', 'Intervalo personalizado']
 const situacoes: Record<string, string> = {
   Pendente: 'Pendente', Aprovado: 'Aprovado', Rejeitado: 'Rejeitado', Cancelada: 'Cancelada',
-  AguardandoComplementacao: 'Aguardando complementação', AguardandoRespostaProposta: 'Aguardando resposta à proposta',
+  AguardandoComplementacao: 'Aguardando complementação', AguardandoRespostaProposta: 'Aguardando resposta do solicitante',
 }
 
 function intervalo(periodo: string, inicio: string, fim: string) {

@@ -1082,7 +1082,7 @@ test('agenda preserva seis filtros e apresenta status desconhecido somente em To
   await screen.findByText('Status desconhecido: EstadoNovo')
   assert.equal(screen.getAllByRole('article').length, 7)
   const user = userEvent.setup()
-  for (const rotulo of ['Pendente', 'Aguardando complementação', 'Aguardando resposta à proposta', 'Aprovado', 'Rejeitado', 'Cancelada']) {
+  for (const rotulo of ['Pendente', 'Aguardando complementação', 'Novo horário proposto', 'Aprovado', 'Rejeitado', 'Cancelada']) {
     await user.click(screen.getByRole('button', { name: rotulo }))
     assert.equal(screen.getAllByRole('article').length, 1)
     assert.equal(screen.queryByText('Status desconhecido: EstadoNovo'), null)

@@ -6,7 +6,7 @@ import styles from '../pages/PainelAdmin.module.css'
 const statusFiltro: Array<{ valor: StatusSolicitacao; rotulo: string }> = [
   { valor: 'Pendente', rotulo: 'Pendentes' },
   { valor: 'AguardandoComplementacao', rotulo: 'Aguardando complementação' },
-  { valor: 'AguardandoRespostaProposta', rotulo: 'Aguardando resposta à proposta' },
+  { valor: 'AguardandoRespostaProposta', rotulo: 'Aguardando resposta do solicitante' },
   { valor: 'Aprovado', rotulo: 'Aprovados' },
   { valor: 'Rejeitado', rotulo: 'Rejeitados' },
   { valor: 'Cancelada', rotulo: 'Cancelados' },
@@ -167,7 +167,7 @@ export function FilaSimulada() {
             <h3>{solicitacao.solicitante?.nome_completo ?? 'Solicitante'}</h3>
             <p>{solicitacao.espaco?.nome ?? 'Laboratório'} · {dataExibida(horario?.data_reserva)} · {horario?.hora_inicio}–{horario?.hora_fim}</p>
             <p>Finalidade: {solicitacao.finalidade}</p>
-            <span className={`${styles.statusSolicitacao} ${styles[`status${solicitacao.status}`] ?? ''}`}>{solicitacao.status}</span>
+            <span className={`${styles.statusSolicitacao} ${styles[`status${solicitacao.status}`] ?? ''}`}>{solicitacao.status === 'AguardandoRespostaProposta' ? 'Aguardando resposta do solicitante' : solicitacao.status}</span>
             {solicitacao.decisao_justificativa && <p>Motivo: {solicitacao.decisao_justificativa}</p>}
           </div>
           {solicitacao.status === 'Pendente' && id !== null && (

@@ -14,7 +14,7 @@ type FiltroStatus = 'Todos' | StatusOficialSolicitacao
 const filtrosStatus: Array<{ valor: FiltroStatus; rotulo: string }> = [
   { valor: 'Todos', rotulo: 'Todos' }, { valor: 'Pendente', rotulo: 'Pendente' },
   { valor: 'AguardandoComplementacao', rotulo: 'Aguardando complementação' },
-  { valor: 'AguardandoRespostaProposta', rotulo: 'Aguardando resposta à proposta' },
+  { valor: 'AguardandoRespostaProposta', rotulo: 'Novo horário proposto' },
   { valor: 'Aprovado', rotulo: 'Aprovado' }, { valor: 'Rejeitado', rotulo: 'Rejeitado' }, { valor: 'Cancelada', rotulo: 'Cancelada' },
 ]
 export function MeusAgendamentos() {

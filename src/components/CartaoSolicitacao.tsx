@@ -5,7 +5,7 @@ import { classificarStatusSolicitacao } from '../data/solicitacoesRecebidas'
 import { formatarDuracaoSolicitacao, formatarHoraSolicitacao, ordenarHorarios } from '../data/apresentacaoSolicitacoes'
 
 const rotulosStatus: Record<StatusOficialSolicitacao, string> = {
-  Pendente: 'Pendente', AguardandoComplementacao: 'Aguardando complementação', AguardandoRespostaProposta: 'Aguardando resposta à proposta',
+  Pendente: 'Pendente', AguardandoComplementacao: 'Aguardando complementação', AguardandoRespostaProposta: 'Novo horário proposto',
   Aprovado: 'Aprovado', Rejeitado: 'Rejeitado', Cancelada: 'Cancelada',
 }
 export function CartaoSolicitacao({ solicitacao, children }: { solicitacao: SolicitacaoConsulta; children?: ReactNode }) {
