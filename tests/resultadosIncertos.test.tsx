@@ -11,6 +11,7 @@ import { CadastroEspaco } from '../src/gestao/CadastroEspaco'
 import { Laboratorios } from '../src/gestao/Laboratorios'
 import { Horarios, Responsaveis } from '../src/gestao/ConfiguracaoEspaco'
 import { Interacao } from '../src/gestao/Interacao'
+import { HistoricoGestor } from '../src/gestao/HistoricoGestor'
 import { RespostaAluno } from '../src/components/RespostaAluno'
 import type { SolicitacaoResposta } from '../src/types/solicitacao'
 
@@ -324,4 +325,24 @@ test('modo simulado bloqueia transporte conectado e usa registro separado', asyn
   assert.equal(tarefas, 0); assert.equal(chamadas.length, 0)
   assert.ok(sessionStorage.getItem('labagenda.escrita.v1:' + JSON.stringify(['simulado', 7, 'operacao-simulada'])))
   assert.equal(sessionStorage.getItem('labagenda.escrita.v1:' + JSON.stringify(['conectado', 7, 'operacao-simulada'])), null)
+})
+
+test('histórico do gestor preserva mensagens, autoria confirmada, ordem e data brasileira', () => {
+  const interacoes: SolicitacaoResposta['interacoes'] = [
+    { id: 1, tipo: 'ComplementacaoSolicitada', situacao: 'Respondida', mensagem: 'Pedido da gestão', dados: null, id_usuario: 7, data_criacao: '2026-11-24T10:00:00Z' },
+    { id: 2, tipo: 'ComplementacaoRespondida', situacao: 'Respondida', mensagem: 'Resposta do solicitante', dados: null, id_usuario: 12, data_criacao: '2026-11-24T11:30:00Z' },
+    { id: 3, tipo: 'ReplanejamentoProposto', situacao: 'AguardandoResposta', mensagem: 'Proposta de outro gestor', dados: null, id_usuario: 8, data_criacao: 'inválida' },
+    { id: 4, tipo: 'PropostaRespondida', situacao: 'Respondida', mensagem: 'Autor não identificado', dados: null, id_usuario: 25, data_criacao: '2026-11-24T12:00:00Z' },
+  ]
+  const tela = render(<HistoricoGestor interacoes={interacoes} idSolicitante={12} idUsuario={7} />)
+  const itens = [...tela.container.querySelectorAll('ol > li')]
+  assert.deepEqual(itens.map(i => i.querySelector('p')?.textContent), interacoes.map(i => i.mensagem))
+  assert.deepEqual(itens.map(i => i.querySelector('header span')?.textContent), ['Você', 'Solicitante', 'Gestão · ID 8', 'Autor ID 25'])
+  const esperado = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(interacoes[0].data_criacao))
+  assert.equal(itens[0].querySelector('time')?.textContent, esperado)
+  assert.equal(itens[0].querySelector('time')?.getAttribute('datetime'), interacoes[0].data_criacao)
+  assert.match(itens[2].textContent ?? '', /Data indisponível/)
+  tela.rerender(<HistoricoGestor interacoes={interacoes} idSolicitante={12} />)
+  assert.equal(screen.queryByText('Você'), null)
+  assert.ok(screen.getByText('Gestão · ID 7'))
 })

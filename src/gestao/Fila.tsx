@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react'
 import { decidir, listarFila, consultarEstadoSolicitacao, type Decisao, type EspacoGestao } from './api'
 import { Interacao } from './Interacao'
+import { HistoricoGestor } from './HistoricoGestor'
+import { obterUsuarioAutenticado } from '../services/autenticacao'
 import { useConsulta } from './consulta'
 import { AvisoConsulta, Confirmacao, useEscritaSegura, dataBR, hojeLocal, somarDias } from './Controles'
 import type { SolicitacaoResposta } from '../types/solicitacao'
@@ -91,8 +93,7 @@ export function Fila({ espacos }: { espacos: EspacoGestao[] }) {
           <p>{s.finalidade} · {situacoes[s.status] ?? s.status}{s.urgencia && ' · Urgente'}</p>
           <p>Solicitante {s.solicitante?.nome_completo ?? '#' + s.id_solicitante} · {s.tipo}</p>
           <ul>{s.horarios.map(h => <li key={h.id ?? h.data_reserva + h.hora_inicio}>{dataBR(h.data_reserva)} das {h.hora_inicio.slice(0, 5)} às {h.hora_fim.slice(0, 5)}</li>)}</ul>
-          {s.interacoes?.length > 0 && <details><summary>Histórico da solicitação</summary>
-            {s.interacoes.map(i => <p key={i.id}>{dataBR(i.data_criacao)} · {i.mensagem}</p>)}</details>}
+          <HistoricoGestor interacoes={s.interacoes ?? []} idSolicitante={s.id_solicitante} idUsuario={obterUsuarioAutenticado()?.id} />
           {s.decisao_justificativa && <p>Justificativa — {s.decisao_justificativa}</p>}
           {s.status === 'Pendente' && s.id != null && <div className={styles.acoes}>
             <button onClick={() => abrir(s, 'Aprovado')}>Aprovar</button>
