@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test, beforeEach } from 'node:test'
-import { readFile } from 'node:fs/promises'
+import { readFile, access } from 'node:fs/promises'
 import { stripTypeScriptTypes } from 'node:module'
 import { transformWithOxc } from 'vite'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -18,9 +18,19 @@ async function modulo(caminho) {
     : stripTypeScriptTypes(fonte)
   const imports = [...codigo.matchAll(/from\s*['"]([^'"]+)['"]/g)]
   for (const [, referencia] of imports) {
-    const resolvido = referencia.startsWith('.')
-      ? await modulo(new URL(referencia + (referencia.endsWith('.ts') || referencia.endsWith('.tsx') ? '' : '.ts'), url).href)
-      : import.meta.resolve(referencia)
+    let resolvido
+    if (referencia.startsWith('.')) {
+      const destino = new URL(referencia, url)
+      if (!/\.tsx?$/.test(destino.pathname)) {
+        const ts = new URL(referencia + '.ts', url)
+        let arquivo = ts
+        try { await access(ts) } catch (erro) {
+          if (erro.code !== 'ENOENT') throw erro
+          arquivo = new URL(referencia + '.tsx', url)
+        }
+        resolvido = await modulo(arquivo.href)
+      } else resolvido = await modulo(destino.href)
+    } else resolvido = import.meta.resolve(referencia)
     codigo = codigo.replaceAll(`'${referencia}'`, `'${resolvido}'`).replaceAll(`"${referencia}"`, `'${resolvido}'`)
   }
   const resultado = `data:text/javascript;base64,${Buffer.from(codigo).toString('base64')}`
@@ -170,8 +180,14 @@ test('grafo das telas integradas não importa fixtures nem serviços de reserva'
     for (const [, caminho] of fonte.matchAll(/from ['"]([^'"]+)['"]/g)) {
       if (!caminho.startsWith('.')) continue
       const base = new URL(caminho, url)
-      let destino = new URL(base.href + '.ts')
-      try { await readFile(destino) } catch { destino = new URL(base.href + '.tsx') }
+      let destino = base
+      if (!/\.(?:tsx?|css)$/.test(base.pathname)) {
+        destino = new URL(base.href + '.ts')
+        try { await access(destino) } catch (erro) {
+          if (erro.code !== 'ENOENT') throw erro
+          destino = new URL(base.href + '.tsx')
+        }
+      }
       await visitar(destino)
     }
   }
