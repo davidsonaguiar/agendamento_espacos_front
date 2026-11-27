@@ -1,5 +1,6 @@
 import type { InteracaoSolicitacaoResposta } from '../types/solicitacao'
 import styles from '../components/RespostaAluno.module.css'
+import { ControleHistorico } from '../components/ControleHistorico'
 
 const tipos: Record<InteracaoSolicitacaoResposta['tipo'], string> = {
   ComplementacaoSolicitada: 'Pedido de complementação', ComplementacaoRespondida: 'Resposta à complementação',
@@ -10,7 +11,7 @@ export function HistoricoGestor({ interacoes, idSolicitante, idUsuario }: {
   interacoes: InteracaoSolicitacaoResposta[]; idSolicitante: number; idUsuario?: number
 }) {
   if (!interacoes.length) return null
-  return <details className={styles.historico}><summary>Histórico da solicitação</summary>
+  return <details className={styles.historico}><ControleHistorico quantidade={interacoes.length} />
     <ol className={styles.mensagens}>{interacoes.map(i => {
       const proprio = Number.isSafeInteger(idUsuario) && idUsuario! > 0 && i.id_usuario === idUsuario
       const solicitante = i.id_usuario === idSolicitante

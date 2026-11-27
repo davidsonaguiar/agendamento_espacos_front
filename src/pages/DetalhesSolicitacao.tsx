@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Cabecalho } from '../components/Cabecalho'
+import { dataBR } from '../gestao/Controles'
 import { useEnvioSolicitacao } from '../hooks/useEnvioSolicitacao'
 import { consultarHorarios } from '../services/disponibilidade'
 import { useRelogioLocal } from '../hooks/useRelogioLocal'
@@ -61,21 +62,21 @@ export function DetalhesSolicitacao({ id }: { id: string }) {
                         : ''
   if (envio.estado.tipo === 'sucesso') {
     const { resposta, laboratorio } = envio.estado
-    const horario = resposta.horarios[0]
-    return <><Cabecalho /><main className="page-shell booking-page">
-      <h1>Solicitação registrada</h1>
-      <p role="status">{resposta.status === 'Pendente' ? 'Solicitação enviada e aguardando análise.' : 'Solicitação registrada. Confira o status retornado.'}</p>
-      <dl className="booking-details-summary">
-        <div><dt>ID da solicitação</dt><dd>{resposta.id}</dd></div>
-        <div><dt>Status</dt><dd>{resposta.status}</dd></div>
-        <div><dt>Laboratório</dt><dd>{laboratorio}</dd></div>
-        <div><dt>Data</dt><dd>{horario.data_reserva}</dd></div>
-        <div><dt>Intervalo</dt><dd>{exibirHora(horario.hora_inicio)}–{exibirHora(horario.hora_fim)}</dd></div>
-        <div><dt>Finalidade</dt><dd>{resposta.finalidade}</dd></div>
-      </dl>
-      <p>Este envio não confirma reserva de horário. A solicitação segue o processo de análise.</p>
-      <Link to="/meus-agendamentos">Consultar minhas solicitações</Link>
-      <Link to="/">Voltar ao catálogo</Link>
+    return <><Cabecalho /><main className="page-shell booking-page confirmation-page">
+      <section className="confirmation-card" aria-labelledby="confirmation-title">
+        <div className="confirmation-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></svg></div>
+        <h1 id="confirmation-title">Solicitação registrada</h1>
+        <p className="confirmation-intro" role="status">{resposta.status === 'Pendente' ? 'Solicitação enviada e aguardando análise.' : 'Solicitação registrada. Confira o status retornado.'}</p>
+        <span className={`agenda-status agenda-status--${resposta.status}`}>Status: {resposta.status}</span>
+        <dl className="confirmation-summary">
+          <div><dt>ID da solicitação</dt><dd>{resposta.id}</dd></div>
+          <div><dt>Laboratório</dt><dd>{laboratorio}</dd></div>
+          <div className="confirmation-summary__wide"><dt>Data e horários</dt><dd><ul>{resposta.horarios.map((horario, indice) => <li key={indice}>{dataBR(horario.data_reserva)} · {exibirHora(horario.hora_inicio)}–{exibirHora(horario.hora_fim)}</li>)}</ul></dd></div>
+          <div className="confirmation-summary__wide"><dt>Finalidade</dt><dd>{resposta.finalidade}</dd></div>
+        </dl>
+        <p className="confirmation-notice">Este envio não confirma reserva de horário. A solicitação segue o processo de análise.</p>
+        <div className="confirmation-actions"><Link className="button button--primary" to="/meus-agendamentos">Consultar minhas solicitações</Link><Link className="button confirmation-secondary" to="/">Voltar ao catálogo</Link></div>
+      </section>
     </main></>
   }
   return <><Cabecalho /><main className="page-shell booking-page">

@@ -159,7 +159,7 @@ test('historico identifica autores conservadoramente, tipos, situacoes e instant
   ]
   montar(); await mostrar()
   const user = userEvent.setup()
-  const resumo = screen.getByText('Histórico da solicitação')
+  const resumo = screen.getByText(/^Histórico da solicitação/).closest('summary')!
   resumo.focus(); assert.ok(document.activeElement === resumo)
   await user.click(resumo)
   const detalhes = resumo.closest('details')!
@@ -178,13 +178,15 @@ test('historico identifica autores conservadoramente, tipos, situacoes e instant
   const esperado = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(instante))
   assert.equal(data.textContent, esperado)
   assert.equal(within(detalhes).queryByText(/Aprovação registrada|Rejeição registrada/), null)
+  await user.click(resumo)
+  assert.equal(detalhes.open, false)
   assert.equal(escritas().length, 0)
 })
 
 test('historico preserva horarios propostos com precisao', async () => {
   lista = [pedido(true)]
   montar(); await mostrar()
-  const resumo = screen.getByText('Histórico da solicitação')
+  const resumo = screen.getByText(/^Histórico da solicitação/).closest('summary')!
   await userEvent.setup().click(resumo)
   const detalhes = resumo.closest('details')!
   assert.ok(within(detalhes).getByText('Proposta de horário'))

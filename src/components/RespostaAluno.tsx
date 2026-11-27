@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react'
 import styles from './RespostaAluno.module.css'
+import { ControleHistorico } from './ControleHistorico'
 import type { InteracaoSolicitacaoConsulta, SolicitacaoConsulta, HorarioSolicitacaoConsulta } from '../types/solicitacaoConsulta'
 import { responderSolicitacao } from '../services/agendamentoAluno'
 import { obterUsuarioAutenticado } from '../services/autenticacao'
@@ -78,7 +79,7 @@ export function RespostaAluno({ solicitacao, atualizar }: { solicitacao: DadosRe
     }, atualizar)
   }
   return <>
-    {historico.length > 0 && <details className={styles.historico}><summary>Histórico da solicitação</summary>
+    {historico.length > 0 && <details className={styles.historico}><ControleHistorico quantidade={historico.length} />
       <ol className={styles.mensagens}>{historico.map(i => {
         const autor = autoriaInteracao(i, solicitacao.id_solicitante)
         return <li key={i.id} className={`${styles.mensagem} ${autor.classe}`}>

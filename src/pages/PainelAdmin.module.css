@@ -561,3 +561,16 @@
 .cartao details { margin-top: 12px; }
 .cartao summary { cursor: pointer; font-weight: 600; padding-block: 6px; }
 .cartao details p button { margin-inline-start: 8px; }
+
+.solicitacaoCabecalho { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.solicitacaoCabecalho h3 { margin: 0; font-size: 19px; }
+.solicitacaoDados { margin: 18px 0; color: #45544e; font-size: 14px; line-height: 1.5; }
+.solicitacaoDados p { margin: 8px 0; }
+.solicitacaoDados strong { color: #1d2926; }
+.solicitacaoDados ul { margin: 6px 0 0; padding-left: 22px; }
+
+
+.pagina .acoes { margin-top: 18px; }
+.pagina .acoes .acaoAprovar { background: var(--color-primary); color: #fff; font-weight: 600; }
+.pagina .acoes .acaoRejeitar { border-color: #b8554c; color: #9f332e; background: #fff5f4; font-weight: 600; }
+@media (max-width: 560px) { .pagina .acoes button { flex: 1 1 100%; } }

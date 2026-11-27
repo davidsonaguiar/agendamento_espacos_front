@@ -89,15 +89,18 @@ export function Fila({ espacos }: { espacos: EspacoGestao[] }) {
     {invalido ? <p role="alert">A data final deve ser igual ou posterior à inicial.</p> :
       visiveis.length === 0 ? <p className={styles.estadoVazio}>Nenhuma solicitação para os filtros selecionados.</p> :
         visiveis.map(s => <article className={styles.cartao} key={s.id}>
-          <h3>Solicitação #{s.id} · {nomes.get(s.id_espaco)}</h3>
-          <p>{s.finalidade} · {situacoes[s.status] ?? s.status}{s.urgencia && ' · Urgente'}</p>
-          <p>Solicitante {s.solicitante?.nome_completo ?? '#' + s.id_solicitante} · {s.tipo}</p>
-          <ul>{s.horarios.map(h => <li key={h.id ?? h.data_reserva + h.hora_inicio}>{dataBR(h.data_reserva)} das {h.hora_inicio.slice(0, 5)} às {h.hora_fim.slice(0, 5)}</li>)}</ul>
+          <header className={styles.solicitacaoCabecalho}><h3>Solicitação #{s.id} · {nomes.get(s.id_espaco)}</h3>
+            <span className={`agenda-status agenda-status--${s.status}`}>{situacoes[s.status] ?? s.status}</span>
+          </header>
+          <div className={styles.solicitacaoDados}><p><strong>Finalidade:</strong> {s.finalidade}{s.urgencia && ' · Urgente'}</p>
+            <p><strong>Solicitante:</strong> {s.solicitante?.nome_completo ?? '#' + s.id_solicitante} · {s.tipo}</p>
+            <strong>Datas e horários</strong><ul>{s.horarios.map(h => <li key={h.id ?? h.data_reserva + h.hora_inicio}>{dataBR(h.data_reserva)} das {h.hora_inicio.slice(0, 5)} às {h.hora_fim.slice(0, 5)}</li>)}</ul>
+          </div>
           <HistoricoGestor interacoes={s.interacoes ?? []} idSolicitante={s.id_solicitante} idUsuario={obterUsuarioAutenticado()?.id} />
-          {s.decisao_justificativa && <p>Justificativa — {s.decisao_justificativa}</p>}
+          {s.decisao_justificativa && <section className={`decision-reason decision-reason--${s.status}`} aria-label="Justificativa da decisão"><strong>Justificativa</strong><p>{s.decisao_justificativa}</p></section>}
           {s.status === 'Pendente' && s.id != null && <div className={styles.acoes}>
-            <button onClick={() => abrir(s, 'Aprovado')}>Aprovar</button>
-            <button onClick={() => abrir(s, 'Rejeitado')}>Rejeitar</button>
+            <button className={styles.acaoAprovar} onClick={() => abrir(s, 'Aprovado')}>Aprovar</button>
+            <button className={styles.acaoRejeitar} onClick={() => abrir(s, 'Rejeitado')}>Rejeitar</button>
             <button onClick={() => setInteracao({ solicitacao: s, proposta: true })}>Sugerir novo horário</button>
             <button onClick={() => setInteracao({ solicitacao: s, proposta: false })}>Pedir complementação</button>
           </div>}

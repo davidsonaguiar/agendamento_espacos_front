@@ -21,9 +21,8 @@ export function CartaoSolicitacao({ solicitacao, children }: { solicitacao: Soli
         <span className="visually-hidden">Status da solicitação: </span>{status.tipo === 'conhecido' ? rotulosStatus[status.valor] : `Status desconhecido: ${status.valor}`}
       </span>
     </header>
-    <dl className="agenda-card__purpose"><div><dt>Finalidade</dt><dd>{solicitacao.finalidade}</dd></div>
-      {justificativa && <div><dt>Justificativa da decisão</dt><dd>{justificativa}</dd></div>}
-    </dl>
+    <dl className="agenda-card__purpose"><div><dt>Finalidade</dt><dd>{solicitacao.finalidade}</dd></div></dl>
+    {justificativa && <section className={`decision-reason decision-reason--${solicitacao.status}`} aria-label="Justificativa da decisão"><strong>Justificativa da decisão</strong><p>{justificativa}</p></section>}
     <h3>Horários solicitados</h3>
     {solicitacao.horarios.length ? <ul className="agenda-card__times">
       {ordenarHorarios(solicitacao.horarios).map((horario, indice) => {
