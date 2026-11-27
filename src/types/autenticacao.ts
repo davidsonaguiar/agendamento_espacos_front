@@ -24,3 +24,6 @@ export interface DadosCadastroMembro {
   email: string
   senha: string
 }
+
+/** @deprecated Compatibilidade temporária com CadastroServidor; o cadastro cria Membro. */
+export type DadosCadastroServidor = DadosCadastroMembro

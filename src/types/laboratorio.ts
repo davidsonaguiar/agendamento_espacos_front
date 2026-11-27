@@ -6,7 +6,7 @@ export interface Laboratorio {
   resumo: string
   bloco: string
   sala: string
-  capacidade: number
+  capacidade: number | null
   disponivel: boolean
   equipamentos: string[]
   tiposDeUso: string[]

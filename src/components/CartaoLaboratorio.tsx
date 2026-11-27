@@ -49,11 +49,11 @@ export function CartaoLaboratorio({ laboratorio }: CartaoLaboratorioProps) {
         <div className="lab-card__metadata">
           <span className="lab-card__meta-item">
             <IconeLocalizacao />
-            <span>{laboratorio.bloco} · {laboratorio.sala}</span>
+            <span>{laboratorio.sala ? `${laboratorio.bloco} · ${laboratorio.sala}` : laboratorio.bloco}</span>
           </span>
           <span className="lab-card__meta-item">
             <IconeCapacidade />
-            <span>{laboratorio.capacidade} pessoas</span>
+            <span>{laboratorio.capacidade === null ? 'Capacidade não informada' : `${laboratorio.capacidade} pessoas`}</span>
           </span>
         </div>
         <div className="lab-card__actions">

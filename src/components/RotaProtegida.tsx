@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { ANTECEDENCIA_RENOVACAO_MS, obterExpiracaoToken, verificarSessao } from '../services/autenticacao'
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { ANTECEDENCIA_RENOVACAO_MS, eventoSessaoEncerrada, eventoSessaoGestor, obterExpiracaoToken, obterTokenAcesso, verificarSessao } from '../services/autenticacao'
 
-type EstadoSessao = 'verificando' | 'autorizado' | 'sem-sessao' | 'indisponivel'
+import { AcessoGestor } from '../gestao/AcessoGestor'
+import type { UsuarioAutenticado } from '../types/autenticacao'
 
-export function RotaProtegida() {
+type EstadoSessao = 'verificando' | 'autorizado' | 'sem-sessao' | 'sem-permissao' | 'indisponivel'
+
+export function RotaProtegida({ somenteAdministrador = false }: { somenteAdministrador?: boolean } = {}) {
+  const [conta, setConta] = useState<UsuarioAutenticado | null>(null)
   const location = useLocation()
   const [estado, setEstado] = useState<EstadoSessao>('verificando')
   const [tentativa, setTentativa] = useState(0)
@@ -18,23 +22,31 @@ export function RotaProtegida() {
       if (!ativo || conferindo) return
       conferindo = true
       if (temporizador !== undefined) clearTimeout(temporizador)
-      if (exibirCarregamento) setEstado('verificando')
+      if (exibirCarregamento) {
+        setConta(null)
+        setEstado('verificando')
+      }
       try {
         const usuario = await verificarSessao()
         if (!ativo) return
-        if (!usuario) {
+        if (!usuario || !obterTokenAcesso()) {
+          setConta(null)
           setEstado('sem-sessao')
           return
         }
-        setEstado('autorizado')
-        const expiracao = obterExpiracaoToken()
+        setConta(usuario)
+        setEstado(somenteAdministrador && usuario.perfil !== 'Administrador' ? 'sem-permissao' : 'autorizado')
+        const expiracao = obterExpiracaoToken(obterTokenAcesso())
         if (expiracao !== null) {
           // Renova antes do vencimento, evitando expirar durante uma página aberta.
           const atraso = Math.max(1_000, expiracao - Date.now() - ANTECEDENCIA_RENOVACAO_MS)
           temporizador = setTimeout(() => { void conferir(false) }, atraso)
         }
       } catch {
-        if (ativo) setEstado('indisponivel')
+        if (ativo) {
+          setConta(null)
+          setEstado('indisponivel')
+        }
       } finally {
         conferindo = false
       }
@@ -44,22 +56,44 @@ export function RotaProtegida() {
     const aoMostrar = () => {
       if (document.visibilityState === 'visible') aoFocar()
     }
+    const exigirLogin = () => {
+      ativo = false
+      if (temporizador !== undefined) clearTimeout(temporizador)
+      setConta(null)
+      setEstado('sem-sessao')
+    }
+    const reverSessao = () => {
+      setConta(null)
+      setEstado('verificando')
+      setTentativa(n => n + 1)
+    }
+    window.addEventListener(eventoSessaoEncerrada, exigirLogin)
+    window.addEventListener(eventoSessaoGestor, reverSessao)
     window.addEventListener('focus', aoFocar)
     document.addEventListener('visibilitychange', aoMostrar)
     void conferir()
     return () => {
       ativo = false
+      window.removeEventListener(eventoSessaoEncerrada, exigirLogin)
+      window.removeEventListener(eventoSessaoGestor, reverSessao)
       window.removeEventListener('focus', aoFocar)
       document.removeEventListener('visibilitychange', aoMostrar)
       if (temporizador !== undefined) clearTimeout(temporizador)
     }
-  }, [location.pathname, tentativa])
+  }, [location.pathname, tentativa, somenteAdministrador])
 
   if (estado === 'verificando') {
     return <main className="access-feedback" role="status">Verificando sua sessão...</main>
   }
   if (estado === 'sem-sessao') {
     return <Navigate to="/login" replace state={{ aviso: 'Faça login para acessar o sistema.', destino: location.pathname + location.search }} />
+  }
+  if (estado === 'sem-permissao') {
+    return <main className="access-feedback" role="alert">
+      <h1>Acesso restrito</h1>
+      <p>Esta área está disponível somente para administradores.</p>
+      <Link to="/">Voltar ao catálogo</Link>
+    </main>
   }
   if (estado === 'indisponivel') {
     return <main className="access-feedback" role="alert">
@@ -68,5 +102,5 @@ export function RotaProtegida() {
       <button type="button" onClick={() => setTentativa(n => n + 1)}>Tentar novamente</button>
     </main>
   }
-  return <Outlet />
+  return conta && <AcessoGestor key={`${conta.id}:${conta.perfil}`} usuario={conta}><Outlet /></AcessoGestor>
 }

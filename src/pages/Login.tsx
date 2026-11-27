@@ -2,6 +2,20 @@ import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutAutenticacao } from '../components/LayoutAutenticacao'
 import { autenticarUsuario, desconectarUsuario } from '../services/autenticacao'
+import { simuladorLocalAtivo } from '../services/sessaoSimulada'
+
+/** Retorno restrito às rotas protegidas existentes; nunca aceita outra origem. */
+export function destinoAposLogin(valor: unknown): string {
+  if (typeof valor !== 'string' || !valor.startsWith('/') || valor.startsWith('//')
+    || /[\\\s\u0000-\u001f\u007f]/u.test(valor)) return '/'
+  try {
+    const url = new URL(valor, 'https://labagenda.invalid')
+    if (url.origin !== 'https://labagenda.invalid') return '/'
+    // Não retorna às telas de autenticação nem a caminhos desconhecidos.
+    if (!/^\/(?:admin|meus-agendamentos|laboratorios\/[1-9]\d*(?:\/agendamento(?:\/detalhes)?)?)?$/.test(url.pathname)) return '/'
+    return url.pathname + url.search + url.hash
+  } catch { return '/' }
+}
 
 export function Login() {
   const navigate = useNavigate()
@@ -11,9 +25,10 @@ export function Login() {
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
 
-  const estado = location.state as { aviso?: string; destino?: string; logoutPendente?: boolean } | null
-  const aviso = estado?.aviso
-  const destino = estado?.destino?.startsWith('/') && !estado.destino.startsWith('//') && !estado.destino.includes('\\') ? estado.destino : '/'
+  const estado = location.state && typeof location.state === 'object'
+    ? location.state as { aviso?: unknown; destino?: unknown; logoutPendente?: unknown } : null
+  const aviso = typeof estado?.aviso === 'string' ? estado.aviso : undefined
+  const destino = destinoAposLogin(estado?.destino)
 
   async function tentarLogout() {
     setCarregando(true)
@@ -54,7 +69,10 @@ export function Login() {
       </div>
       <form className="login-form" onSubmit={handleSubmit}>
         {aviso && <p className="login-notice" role="status">{aviso}</p>}
-        {estado?.logoutPendente && <button type="button" className="login-submit" disabled={carregando} onClick={() => { void tentarLogout() }}>Tentar encerrar sessão novamente</button>}
+        {simuladorLocalAtivo && <p className="login-notice" role="note">
+          Simulador local ativo. Utilize somente contas fictícias; este modo não autentica na API.
+        </p>}
+        {estado?.logoutPendente === true && <button type="button" className="login-submit" disabled={carregando} onClick={() => { void tentarLogout() }}>Tentar encerrar sessão novamente</button>}
         <label className="login-field">
           <span>E-mail ou CPF</span>
           <input

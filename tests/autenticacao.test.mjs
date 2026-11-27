@@ -7,8 +7,10 @@ import { stripTypeScriptTypes } from 'node:module'
 const fonteHttp = (await readFile(new URL('../src/services/http.ts', import.meta.url), 'utf8'))
   .replace('import.meta.env.VITE_API_URL', JSON.stringify('http://localhost:5173'))
 const urlHttp = `data:text/javascript;base64,${Buffer.from(stripTypeScriptTypes(fonteHttp)).toString('base64')}`
+const urlSimulador = `data:text/javascript;base64,${Buffer.from('export const simuladorLocalAtivo = false; export function autenticarNoSimuladorLocal() { return null }').toString('base64')}`
 const fonte = (await readFile(new URL('../src/services/autenticacao.ts', import.meta.url), 'utf8'))
   .replace("from './http'", `from '${urlHttp}'`)
+  .replace("from './sessaoSimulada'", `from '${urlSimulador}'`)
 const compilado = stripTypeScriptTypes(fonte)
 const api = await import(`data:text/javascript;base64,${Buffer.from(compilado).toString('base64')}`)
 
@@ -363,6 +365,106 @@ test('cancelamento externo mantém AbortError', async () => {
   const erro = new DOMException('Cancelado', 'AbortError')
   globalThis.fetch = async () => { throw erro }
   await assert.rejects(api.autenticarUsuario('a', 'b'), falha => falha === erro)
+})
+
+test('alias temporário de cadastro usa contrato Membro sem autenticar automaticamente', async () => {
+  const entrada = { nome_completo: 'Ana', cpf: '00000000001', vinculo_institucional: 'MAT123', email: 'ana@example.com', senha: 'senha-sem-trim ' }
+  assert.equal(api.cadastrarServidor, api.cadastrarMembro)
+  globalThis.fetch = async (url, opcoes) => {
+    assert.equal(url, 'http://localhost:5173/usuarios/')
+    assert.equal(opcoes.credentials, 'include')
+    assert.equal(opcoes.headers.has('Authorization'), false)
+    assert.deepEqual(JSON.parse(opcoes.body), entrada)
+    return resposta(201, dadosUsuario)
+  }
+  assert.equal((await api.cadastrarServidor(entrada)).perfil, 'Membro')
+  assert.equal(api.obterTokenAcesso(), null)
+})
+
+test('cadastro público rejeita resposta com perfil Administrador', async () => {
+  globalThis.fetch = async () => resposta(201, { ...dadosUsuario, perfil: 'Administrador' })
+  await assert.rejects(api.cadastrarMembro({}), /dados inesperados/)
+  assert.equal(api.obterUsuarioAutenticado(), null)
+})
+
+test('login admite Administrador, normaliza identificação e preserva senha', async () => {
+  globalThis.fetch = async (_url, opcoes) => {
+    assert.deepEqual(JSON.parse(opcoes.body), { identificacao: 'admin@example.com', senha: ' senha ' })
+    return resposta(200, { ...respostaLogin, usuario: { ...dadosUsuario, perfil: 'Administrador' } })
+  }
+  assert.equal((await api.autenticarUsuario(' admin@example.com ', ' senha ')).usuario.perfil, 'Administrador')
+})
+
+test('token próximo de expirar renova antecipadamente antes de consultar /me', async () => {
+  storage.setItem('labagenda.access_token', jwt(Date.now() / 1000 + 20))
+  const rotas = []
+  globalThis.fetch = async url => {
+    rotas.push(new URL(url).pathname)
+    return resposta(200, url.endsWith('/me') ? dadosUsuario : respostaLogin)
+  }
+  assert.equal((await api.verificarSessao()).perfil, 'Membro')
+  assert.deepEqual(rotas, ['/usuarios/refresh', '/usuarios/me'])
+})
+
+for (const status of [401, 403]) {
+  test(`refresh HTTP ${status} limpa sessão e não repete`, async () => {
+    storage.setItem('labagenda.access_token', 'token-anterior')
+    storage.setItem('labagenda.usuario', JSON.stringify(dadosUsuario))
+    let chamadas = 0
+    globalThis.fetch = async () => { chamadas++; return resposta(status, {}) }
+    assert.equal(await api.renovarSessao(), null)
+    assert.equal(chamadas, 1)
+    assert.equal(api.obterTokenAcesso(), null)
+    assert.equal(api.obterUsuarioAutenticado(), null)
+  })
+}
+
+for (const corpo of [undefined, null, [], {}, { ...respostaLogin, token_type: 'outro' }]) {
+  test(`refresh rejeita resposta inválida sem substituir sessão: ${JSON.stringify(corpo)}`, async () => {
+    storage.setItem('labagenda.access_token', 'token-anterior')
+    let chamadas = 0
+    globalThis.fetch = async () => { chamadas++; return resposta(200, corpo) }
+    await assert.rejects(api.renovarSessao(), api.ErroAutenticacao)
+    assert.equal(chamadas, 1)
+    assert.equal(api.obterTokenAcesso(), 'token-anterior')
+  })
+}
+
+test('refresh 500 preserva sessão, propaga status e permite tentativa posterior', async () => {
+  storage.setItem('labagenda.access_token', 'token-anterior')
+  globalThis.fetch = async () => resposta(500, {})
+  await assert.rejects(api.renovarSessao(), erro => erro.status === 500)
+  assert.equal(api.obterTokenAcesso(), 'token-anterior')
+  globalThis.fetch = async () => resposta(200, respostaLogin)
+  assert.equal((await api.renovarSessao()).usuario.id, 1)
+})
+
+test('timeout de autenticação aborta transporte sem classificar sessão como inválida', async () => {
+  const timeoutOriginal = AbortSignal.timeout
+  const controle = new AbortController()
+  storage.setItem('labagenda.access_token', 'token-anterior')
+  AbortSignal.timeout = ms => { assert.equal(ms, 15_000); return controle.signal }
+  try {
+    globalThis.fetch = async (_url, { signal }) => {
+      assert.equal(signal, controle.signal)
+      return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    }
+    const pendente = api.renovarSessao()
+    const rejeicao = assert.rejects(pendente, erro => erro instanceof api.ErroAutenticacao && erro.status === undefined && /demorou/.test(erro.message))
+    await proximoTurno()
+    controle.abort(new DOMException('Tempo excedido', 'TimeoutError'))
+    await rejeicao
+    assert.equal(api.obterTokenAcesso(), 'token-anterior')
+  } finally {
+    AbortSignal.timeout = timeoutOriginal
+  }
+})
+
+test('cache de usuário rejeita JSON inválido e perfis globais antigos', () => {
+  for (const valor of ['{invalido', JSON.stringify({ ...dadosUsuario, perfil: 'Monitor' }), JSON.stringify({ ...dadosUsuario, perfil: 'Coordenador' })]) {
+    storage.setItem('labagenda.usuario', valor)
+    assert.equal(api.obterUsuarioAutenticado(), null)
+  }
 })
 
 test('401 atrasado usa o token já renovado por outro consumidor', async () => {
