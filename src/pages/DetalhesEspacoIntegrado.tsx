@@ -62,7 +62,7 @@ export function DetalhesEspacoIntegrado({ id }: { id: string }) {
             <section className="detail-card" aria-labelledby="detail-booking-title">
               <h2 id="detail-booking-title">Consultar disponibilidade</h2>
               <p>Consulte os horários disponíveis, informe a finalidade e envie uma solicitação para análise.</p>
-              <Link className="booking-back-link" to={`/laboratorios/${espaco.id}/agendamento`}>Consultar horários disponíveis</Link>
+              <Link className="button button--primary detail-booking-action" to={`/laboratorios/${espaco.id}/agendamento`}>Consultar horários disponíveis</Link>
             </section>
           </div>
         </div>
