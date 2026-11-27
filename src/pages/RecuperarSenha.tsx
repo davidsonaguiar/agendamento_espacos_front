@@ -46,8 +46,8 @@ function FormularioRecuperacao({ token }: { token: string | null }) {
     evento.preventDefault()
     setErro('')
     if (!token || linkInvalido) return
-    if (senha.length < 8) {
-      setErro('A nova senha precisa ter pelo menos 8 caracteres.')
+    if (senha.length < 12) {
+      setErro('A nova senha precisa ter pelo menos 12 caracteres.')
       return
     }
     if (senha !== confirmacao) {
@@ -83,13 +83,14 @@ function FormularioRecuperacao({ token }: { token: string | null }) {
       ) : redefinindo ? (
         <form className="login-form" onSubmit={enviarNovaSenha}>
           <label className="login-field">
-            <span>Nova senha (mínimo 8 caracteres)</span>
-            <input type="password" autoComplete="new-password" required minLength={8} value={senha}
+            <span>Nova senha (mínimo 12 caracteres)</span>
+            <input type="password" autoComplete="new-password" required minLength={12} aria-describedby="requisitos-senha-redefinicao" value={senha}
               onChange={evento => setSenha(evento.target.value)} disabled={enviando} />
           </label>
+          <p id="requisitos-senha-redefinicao" className="login-info">Use pelo menos 12 caracteres, incluindo letras maiúsculas e minúsculas, número e símbolo.</p>
           <label className="login-field">
             <span>Confirmar nova senha</span>
-            <input type="password" autoComplete="new-password" required minLength={8} value={confirmacao}
+            <input type="password" autoComplete="new-password" required minLength={12} value={confirmacao}
               aria-describedby={erro ? 'erro-redefinicao' : undefined}
               onChange={evento => setConfirmacao(evento.target.value)} disabled={enviando} />
           </label>

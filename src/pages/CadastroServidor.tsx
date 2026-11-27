@@ -18,8 +18,8 @@ export function CadastroServidor() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const cpfLimpo = cpf.replace(/\D/g, '')
-    if (nome.trim().length < 3 || cpfLimpo.length !== 11 || vinculo.trim().length < 3 || senha.length < 8) {
-      setErro('Confira nome, CPF (11 dígitos), vínculo institucional e senha (mínimo 8 caracteres).')
+    if (nome.trim().length < 3 || cpfLimpo.length !== 11 || vinculo.trim().length < 3 || senha.length < 12) {
+      setErro('Confira nome, CPF (11 dígitos), vínculo institucional e senha (mínimo 12 caracteres).')
       return
     }
     if (senha !== confirmacao) {
@@ -58,8 +58,9 @@ export function CadastroServidor() {
           <input required minLength={3} maxLength={50} value={vinculo} onChange={(e: ChangeEvent<HTMLInputElement>) => setVinculo(e.target.value)} disabled={carregando} placeholder="Sua matrícula ou vínculo" /></label>
         <label className="login-field"><span>E-mail</span>
           <input required type="email" autoComplete="email" value={email} onChange={(e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} disabled={carregando} placeholder="seuemail@ifal.edu.br" /></label>
-        <label className="login-field"><span>Senha (mínimo 8 caracteres)</span>
-          <input required minLength={8} type="password" autoComplete="new-password" value={senha} onChange={(e: ChangeEvent<HTMLInputElement>) => setSenha(e.target.value)} disabled={carregando} /></label>
+        <label className="login-field"><span>Senha (mínimo 12 caracteres)</span>
+          <input required minLength={12} aria-describedby="requisitos-senha-cadastro" type="password" autoComplete="new-password" value={senha} onChange={(e: ChangeEvent<HTMLInputElement>) => setSenha(e.target.value)} disabled={carregando} /></label>
+        <p id="requisitos-senha-cadastro" className="login-info">Use pelo menos 12 caracteres, incluindo letras maiúsculas e minúsculas, número e símbolo.</p>
         <label className="login-field"><span>Confirmar senha</span>
           <input required type="password" autoComplete="new-password" value={confirmacao} onChange={(e: ChangeEvent<HTMLInputElement>) => setConfirmacao(e.target.value)} disabled={carregando} /></label>
         {erro && <p className="login-error" role="alert">{erro}</p>}

@@ -159,7 +159,7 @@ test('cadastro normaliza CPF, não envia perfil e valida confirmação', async (
   await user.type(screen.getByLabelText('CPF', { exact: true }), '123.456.789-01')
   await user.type(screen.getByLabelText('Vínculo institucional (matrícula ou registro)'), 'MAT123')
   await user.type(screen.getByLabelText('E-mail', { exact: true }), 'ana@example.com')
-  await user.type(screen.getByLabelText('Senha (mínimo 8 caracteres)', { exact: true }), 'SenhaValida123!')
+  await user.type(screen.getByLabelText('Senha (mínimo 12 caracteres)', { exact: true }), 'SenhaValida123!')
   await user.type(screen.getByLabelText('Confirmar senha'), 'outra')
   await user.click(screen.getByRole('button', { name: 'Criar conta' }))
   assert.equal(screen.getByRole('alert').textContent, 'As senhas não coincidem.')
@@ -171,6 +171,23 @@ test('cadastro normaliza CPF, não envia perfil e valida confirmação', async (
   assert.deepEqual(chamadas[0].body, { nome_completo: 'Ana Teste', cpf: '12345678901', vinculo_institucional: 'MAT123', email: 'ana@example.com', senha: 'SenhaValida123!' })
 })
 
+test('cadastro orienta requisitos e bloqueia senha com 11 caracteres antes da API', async () => {
+  const user = userEvent.setup()
+  abrir('/cadastro')
+  await user.type(screen.getByLabelText('Nome completo'), 'Ana Teste')
+  await user.type(screen.getByLabelText('CPF', { exact: true }), '123.456.789-01')
+  await user.type(screen.getByLabelText('Vínculo institucional (matrícula ou registro)'), 'MAT123')
+  await user.type(screen.getByLabelText('E-mail', { exact: true }), 'ana@example.com')
+  const senha = screen.getByLabelText('Senha (mínimo 12 caracteres)', { exact: true }) as HTMLInputElement
+  assert.equal(senha.minLength, 12)
+  assert.match(screen.getByText(/incluindo letras maiúsculas e minúsculas, número e símbolo/).textContent!, /12 caracteres/)
+  assert.equal(senha.getAttribute('aria-describedby'), 'requisitos-senha-cadastro')
+  await user.type(senha, '12345678901')
+  await user.type(screen.getByLabelText('Confirmar senha'), '12345678901')
+  fireEvent.submit(senha.closest('form')!)
+  assert.match(screen.getByRole('alert').textContent!, /mínimo 12 caracteres/)
+  assert.equal(chamadas.length, 0)
+})
 test('indisponibilidade oculta agenda e permite tentar novamente', async () => {
   const fetchValido = globalThis.fetch
   globalThis.fetch = async () => { throw Error('offline') }
@@ -1318,7 +1335,7 @@ test('link de redefinição aceita nova senha e volta ao login', async () => {
     return new Response(null, { status: 204 })
   }
   abrir('/recuperar-senha?token=' + 't'.repeat(43))
-  await user.type(screen.getByLabelText('Nova senha (mínimo 8 caracteres)'), 'SenhaNova123!')
+  await user.type(screen.getByLabelText('Nova senha (mínimo 12 caracteres)'), 'SenhaNova123!')
   await user.type(screen.getByLabelText('Confirmar nova senha'), 'SenhaNova123!')
   await user.click(screen.getByRole('button', { name: 'Salvar nova senha' }))
   await screen.findByText('Senha redefinida com sucesso. Entre com a nova senha.')
@@ -1327,6 +1344,19 @@ test('link de redefinição aceita nova senha e volta ao login', async () => {
 })
 
 
+test('redefinição orienta requisitos e bloqueia senha com 11 caracteres antes da API', async () => {
+  const user = userEvent.setup()
+  abrir('/recuperar-senha?token=' + 't'.repeat(43))
+  const senha = screen.getByLabelText('Nova senha (mínimo 12 caracteres)') as HTMLInputElement
+  assert.equal(senha.minLength, 12)
+  assert.match(screen.getByText(/incluindo letras maiúsculas e minúsculas, número e símbolo/).textContent!, /12 caracteres/)
+  assert.equal(senha.getAttribute('aria-describedby'), 'requisitos-senha-redefinicao')
+  await user.type(senha, '12345678901')
+  await user.type(screen.getByLabelText('Confirmar nova senha'), '12345678901')
+  fireEvent.submit(senha.closest('form')!)
+  assert.match(screen.getByRole('alert').textContent!, /pelo menos 12 caracteres/)
+  assert.equal(chamadas.length, 0)
+})
 test('revalidação de aba mantém restrição administrativa após mudança de perfil no servidor', async () => {
   autenticado = true
   usuarioResposta = { ...usuario, perfil: 'Administrador' }
