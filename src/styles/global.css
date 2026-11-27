@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #1d2926;
   background: #f3f7f5;
@@ -458,3 +458,28 @@ a { color: inherit; }
 @container agenda (max-width: 560px) {
   .agenda-controls__grid, .agenda-list { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Características do espaço nas listas e nos detalhes. */
+.space-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 20px 0; }
+.space-facts__item { display: flex; min-width: 0; align-items: flex-start; gap: 10px; padding: 13px; border: 1px solid #dcece4; border-radius: 12px; background: #f5faf7; }
+.space-facts__item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--color-primary); }
+.space-facts__item > div { min-width: 0; }
+.space-facts__item dt { color: #52665d; font-size: 13px; line-height: 1.35; }
+.real-space-card .space-facts__item dd, .space-facts__item dd { margin: 4px 0 0; color: #1d2926; font-size: 15px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.space-facts--featured { width: min(100%, 760px); gap: 14px; margin: 28px 0 0; }
+.space-facts--featured .space-facts__item { min-height: 76px; align-items: center; gap: 16px; padding: 12px 18px; border: 0; border-radius: 15px; background: #fff; }
+.space-facts--featured .space-facts__item svg { width: 24px; height: 24px; }
+.space-facts--featured .space-facts__item dd { font-size: 16px; }
+@media (max-width: 560px) { .space-facts { grid-template-columns: 1fr; } .space-facts--featured { margin-top: 22px; } }
+.detail-resources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.detail-resources__item { display: flex; min-width: 0; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid #dcece4; border-radius: 12px; background: #f5faf7; }
+.detail-resources__item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--color-primary); }
+.detail-resources__item > div { min-width: 0; }
+.detail-resources__item strong { color: #1d2926; overflow-wrap: anywhere; }
+.detail-resources__item p { margin: 5px 0 0; color: #52665d; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .detail-resources { grid-template-columns: 1fr; } }
+.detail-resources--compact { grid-template-columns: 1fr; gap: 8px; }
+.detail-resources--compact .detail-resources__item { padding: 10px 12px; gap: 10px; }
+.detail-resources--compact .detail-resources__item p { margin-top: 3px; }
+.space-card-status { margin: 20px 0; }
+.space-card-status p { margin: 8px 0 0; color: #52665d; font-size: 14px; line-height: 1.45; }

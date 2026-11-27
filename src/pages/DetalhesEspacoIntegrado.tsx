@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Cabecalho } from '../components/Cabecalho'
+import { CaracteristicasEspaco } from '../components/CaracteristicasEspaco'
+import { RecursosEspaco } from '../components/RecursosEspaco'
 import { useCatalogoEspacos } from '../hooks/useCatalogoEspacos'
 
 // Contrato do backend: 0 = Domingo. Dias ausentes não implicam fechamento.
@@ -25,11 +27,8 @@ export function DetalhesEspacoIntegrado({ id }: { id: string }) {
               {espaco.disponivel ? 'Espaço ativo' : 'Espaço indisponível'}
             </span>
             <h1 id="detail-lab-title">{espaco.nome}</h1>
-            <p className="detail-hero__summary">A situação cadastral não confirma horários livres.</p>
-            <div className="detail-hero__facts">
-              <div className="detail-hero__fact"><span><span className="detail-hero__fact-label">Localização · Bloco</span><strong>{espaco.bloco?.trim() || 'Localização não informada.'}</strong></span></div>
-              <div className="detail-hero__fact"><span><span className="detail-hero__fact-label">Capacidade</span><strong>{espaco.capacidade === null ? 'Capacidade não informada.' : `${espaco.capacidade} pessoas`}</strong></span></div>
-            </div>
+            <p className="detail-hero__summary">{espaco.disponivel ? 'Consulte o calendário para verificar os dias e horários disponíveis para agendamento.' : 'Este espaço está indisponível para agendamento.'}</p>
+            <CaracteristicasEspaco bloco={espaco.bloco} capacidade={espaco.capacidade} destaque />
           </div>
         </section>
         <div className="detail-info-layout">
@@ -39,13 +38,8 @@ export function DetalhesEspacoIntegrado({ id }: { id: string }) {
               <p>{espaco.descricao?.trim() || 'Descrição não informada.'}</p>
             </section>
             <section className="detail-card" aria-labelledby="detail-resources-title">
-              <h2 id="detail-resources-title">Recursos associados</h2>
-              {espaco.recursos.length ? <ul className="detail-rules__list">{espaco.recursos.map(recurso => <li key={recurso.id}>
-                <strong>{recurso.nome.trim() || 'Recurso sem nome informado'}</strong>
-                {recurso.tipo.trim() ? ` · ${recurso.tipo}` : ''}
-                {' — '}{recurso.disponibilidade ? 'Disponível' : 'Indisponível'}
-                {recurso.autorizacao_necessaria ? ' · Requer autorização' : ''}
-              </li>)}</ul> : <p>Nenhum recurso informado.</p>}
+              <h2 id="detail-resources-title">Recursos do espaço</h2>
+              <RecursosEspaco recursos={espaco.recursos} />
             </section>
           </div>
           <div className="detail-slots-column">

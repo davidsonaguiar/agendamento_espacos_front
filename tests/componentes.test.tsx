@@ -216,12 +216,28 @@ test('catálogo autenticado usa API, busca recursos e identifica indisponíveis'
   await screen.findByRole('heading', { name: 'Laboratório API 77' })
   await user.type(screen.getByRole('searchbox', { name: 'Buscar laboratório ou recurso' }), 'IMPRESSORA 3D')
   assert.ok(screen.getByRole('heading', { name: 'Laboratório API 77' }))
-  assert.match(screen.getByText(/Impressora 3D — Indisponível/).textContent ?? '', /Requer autorização/)
+  const recurso = screen.getByRole('article').querySelector('.detail-resources__item')!
+  assert.match(recurso.textContent ?? '', /Impressora 3D/)
+  assert.match(recurso.textContent ?? '', /Indisponível/ )
+  assert.match(recurso.textContent ?? '', /Requer autorização/ )
+  assert.ok(screen.getByText('Espaço ativo'))
+  assert.ok(screen.getByText('Consulte o calendário para conferir os horários disponíveis.'))
+  assert.ok(screen.getByRole('heading', { name: 'Recursos do espaço' }))
   await user.selectOptions(screen.getByLabelText('Filtrar por bloco'), 'Bloco X')
   assert.ok(screen.getByRole('link', { name: 'Ver laboratório' }))
   assert.equal(screen.queryByText('COLAB'), null)
 })
 
+test('catálogo identifica espaço inativo sem prometer horários', async () => {
+  autenticado = true
+  espacosResposta = [{ ...espacosTeste[0], disponibilidade: false }]
+  abrir('/')
+  await screen.findByRole('heading', { name: 'Laboratório API 77' })
+  assert.ok(screen.getByText('Espaço indisponível'))
+  assert.ok(screen.getByText('Este espaço está indisponível para agendamento.'))
+  assert.equal(screen.queryByText('Consulte o calendário para conferir os horários disponíveis.'), null)
+  assert.ok(screen.getByRole('link', { name: 'Ver laboratório' }))
+})
 test('detalhe navega para calendário real sem horários fictícios', async () => {
   autenticado = true
   const user = userEvent.setup()
@@ -306,6 +322,8 @@ test('detalhes exibem dados e horários reais sem transformar funcionamento em d
   assert.ok(screen.getByText('Bloco X'))
   assert.ok(screen.getByText('0 pessoas'))
   assert.ok(screen.getByText('Espaço indisponível'))
+  assert.ok(screen.getByText('Este espaço está indisponível para agendamento.'))
+  assert.ok(screen.getByRole('heading', { name: 'Recursos do espaço' }))
   assert.ok(screen.getByText('Impressora 3D'))
   assert.ok(screen.getByText(/Indisponível · Requer autorização/))
   const horarios = screen.getByRole('region', { name: 'Horário de funcionamento' })
@@ -322,6 +340,8 @@ test('detalhes tratam campos nulos, textos vazios e listas ausentes sem dados de
   espacosResposta = [{ id: 77, nome: 'Espaço mínimo', descricao: '  ', bloco: null, capacidade: null, disponibilidade: true }]
   abrir('/laboratorios/77')
   await screen.findByRole('heading', { name: 'Espaço mínimo' })
+  assert.ok(screen.getByText('Espaço ativo'))
+  assert.ok(screen.getByText('Consulte o calendário para verificar os dias e horários disponíveis para agendamento.'))
   for (const texto of ['Descrição não informada.', 'Localização não informada.', 'Capacidade não informada.', 'Nenhum recurso informado.', 'Horários de funcionamento não informados.']) {
     assert.ok(screen.getByText(texto))
   }
